@@ -22,7 +22,7 @@ All commands below assume you are in the git checkout that `docker compose` uses
    curl -sf https://2007.gliffy.tv/metrics | head
    ```
    Locally the same paths are `http://127.0.0.1:8080/...`.
-3. Open the site, **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser does not keep a cached `app.js` from the last map ship, enter a name you already used, and check the pack is still there. `index.html` pins `app.js?v=…` — bump that query if static hosting still serves an old script.
+3. Open the site, **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser does not keep a cached `app.js` from the last map ship, enter a name you already used, and check the pack is still there. `index.html` pins `app.js?v=click-near-2` — bump that query if static hosting still serves an old script.
 
 Compose rebuilds the `world` image from `Dockerfile`. Postgres data stays on the `pgdata` volume. A deploy does **not** wipe packs.
 

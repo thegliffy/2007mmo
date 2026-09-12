@@ -78,7 +78,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. Enter names. Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=click-near-1` and `pick-npc.js?v=click-near-1` so a stale `app.js` from the Week 2 map ship does not keep exact-tile clicks.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=click-near-2` and `pick-npc.js?v=click-near-2` so a stale Week 2 `app.js` does not keep exact-tile clicks.
 
 Headless stand-in for two tabs (needs `pip install websockets`):
 

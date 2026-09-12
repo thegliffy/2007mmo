@@ -216,6 +216,76 @@ func TestSetAttackNoStandTileNotes(t *testing.T) {
 	}
 }
 
+func TestHostileDoesNotDamageWithoutTarget(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := firstHostile(w, "Brambleback")
+	if npc == nil {
+		t.Fatal("no brambleback")
+	}
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y
+	p.Target = ""
+	npc.Target = p.ID
+	hp := p.HP
+	npcHP := npc.HP
+	w.Tick(context.Background())
+	if p.HP != hp {
+		t.Fatalf("hostile must not chip a player with no Target, hp %d→%d", hp, p.HP)
+	}
+	if npc.HP != npcHP {
+		t.Fatalf("npc should not swing without a player lock, hp %d→%d", npcHP, npc.HP)
+	}
+}
+
+func TestSetAttackAfterHitRelocks(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := firstHostile(w, "Thornkin")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y
+	w.SetAttack("p1", npc.ID)
+	w.Tick(context.Background())
+	if p.HP >= playerMaxHP {
+		t.Fatalf("expected a hit, hp=%d", p.HP)
+	}
+	p.Target = ""
+	w.SetAttack("p1", npc.ID)
+	if p.Target != npc.ID {
+		t.Fatal("click-attack must lock again after being hit")
+	}
+	note := w.TakeNote("p1")
+	if note == "" {
+		t.Fatal("expected a set-upon or fight note after relock")
+	}
+}
+
+func TestMoveTowardTargetKeepsLock(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := firstHostile(w, "Thornkin")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y-4
+	w.SetAttack("p1", npc.ID)
+	if p.Target != npc.ID {
+		t.Fatal("expected lock")
+	}
+	// WASD / missed click south — closer to the beast, must not wipe Target.
+	w.SetDest("p1", p.X, p.Y+1)
+	if p.Target != npc.ID {
+		t.Fatal("step toward the beast must keep the fight lock")
+	}
+}
+
+func TestMoveAwayClearsLock(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := firstHostile(w, "Thornkin")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y
+	w.SetAttack("p1", npc.ID)
+	w.SetDest("p1", spawnX, spawnY)
+	if p.Target != "" {
+		t.Fatalf("walking away should break off, target=%q", p.Target)
+	}
+}
+
 func TestInteractOnNPCStartsAttack(t *testing.T) {
 	w := testWorld(t, newMem())
 	npc := firstHostile(w, "Thornkin")

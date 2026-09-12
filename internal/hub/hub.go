@@ -117,9 +117,11 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 	case cmdInteract:
 		h.World.SetInteract(c.playerID, c.id)
 		h.metrics.AddAction()
+		h.pushNoteAndState(c.client, c.playerID)
 	case cmdAttack:
 		h.World.SetAttack(c.playerID, c.id)
 		h.metrics.AddAction()
+		h.pushNoteAndState(c.client, c.playerID)
 	case cmdUse:
 		if text, ok := h.World.UseItem(ctx, c.playerID, c.id); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
@@ -205,6 +207,15 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		Items:    protocol.Catalog(),
 	})
 	h.sendJSON(c.client, h.World.Snapshot(p.ID))
+}
+
+func (h *Hub) pushNoteAndState(cl *Client, playerID string) {
+	if text := h.World.TakeNote(playerID); text != "" {
+		h.sendJSON(cl, protocol.Event{T: protocol.MsgEvent, Text: text})
+	}
+	if cl != nil && playerID != "" {
+		h.sendJSON(cl, h.World.Snapshot(playerID))
+	}
 }
 
 func (h *Hub) flushNotes() {

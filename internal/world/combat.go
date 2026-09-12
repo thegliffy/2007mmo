@@ -81,6 +81,25 @@ func (w *World) SetAttack(id, npcID string) {
 	}
 }
 
+// destKeepsThreat reports whether a walk dest should leave the current
+// fight lock alone. WASD and a missed click both arrive as SetDest; those
+// used to wipe Target via cancelAction, so a player could take one swing
+// of damage and then be unable to stay locked (or look unlocked).
+// Keep the lock when the step is still beside the beast or not farther
+// from it than we already are (closing in). Walking strictly away breaks off.
+func (w *World) destKeepsThreat(p *Player, x, y int) bool {
+	if p == nil || p.Target == "" {
+		return false
+	}
+	npc := w.npcByID(p.Target)
+	if !npc.Living() {
+		return false
+	}
+	dDest := chebyshev(x, y, npc.X, npc.Y)
+	dNow := chebyshev(p.X, p.Y, npc.X, npc.Y)
+	return dDest <= 1 || dDest <= dNow
+}
+
 func (w *World) tickChase(p *Player) {
 	if p.Target == "" {
 		return
