@@ -227,15 +227,37 @@
   canvas.addEventListener("click", (e) => {
     const t = tileAt(e.clientX, e.clientY);
     if (!t) return;
-    const npc = (state.npcs || []).find((n) => n.x === t.x && n.y === t.y);
-    if (npc) {
-      send({ t: npc.hostile ? "attack" : "interact", id: npc.id });
-      return;
+    const pick = globalThis.HollowmerePick;
+    const intent = pick && pick.resolveCanvasClick
+      ? pick.resolveCanvasClick(state.npcs, state.nodes, t)
+      : resolveClickFallback(state.npcs, state.nodes, t);
+    if (intent.t === "attack" && state.you) {
+      state.you.target = intent.id;
+      renderVitals();
     }
-    const node = (state.nodes || []).find((n) => n.x === t.x && n.y === t.y);
-    if (node) send({ t: "interact", id: node.id });
-    else send({ t: "move", x: t.x, y: t.y });
+    send(intent);
   });
+
+  // Same Chebyshev ≤ 1 rule as pick-npc.js. Kept here so a missing
+  // pick-npc.js (or a cached app.js-only deploy) still sends attack.
+  function resolveClickFallback(npcs, nodes, tile) {
+    let best = null, bestDist = 99, bestHostile = false;
+    for (const n of npcs || []) {
+      if (n.maxHp > 0 && (n.hp == null ? n.maxHp : n.hp) <= 0) continue;
+      const d = Math.max(Math.abs(n.x - tile.x), Math.abs(n.y - tile.y));
+      if (d > 1) continue;
+      const hostile = !!n.hostile;
+      if (!best || (hostile && !bestHostile) || (hostile === bestHostile && d < bestDist)) {
+        best = n;
+        bestDist = d;
+        bestHostile = hostile;
+      }
+    }
+    if (best) return { t: best.hostile ? "attack" : "interact", id: best.id };
+    const node = (nodes || []).find((n) => n.x === tile.x && n.y === tile.y);
+    if (node) return { t: "interact", id: node.id };
+    return { t: "move", x: tile.x, y: tile.y };
+  }
 
   const held = {};
   window.addEventListener("keydown", (e) => {

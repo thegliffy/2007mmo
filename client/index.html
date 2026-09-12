@@ -25,12 +25,12 @@
           <div class="bevel">
             <canvas id="stage" width="840" height="960"></canvas>
           </div>
-          <p id="hint">Walk the grass. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click a beast to fight. WASD if you like.</p>
+          <p id="hint">Walk the grass. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight — the tile under the cursor does not have to be exact. WASD if you like.</p>
         </div>
         <aside id="panels">
           <section class="panel">
             <h2>Vitals</h2>
-            <p class="sub">Click a southern beast to fight. Soft defeat wakes you at the stile.</p>
+            <p class="sub">Click near a southern beast to fight. Soft defeat wakes you at the stile.</p>
             <div id="vitals"></div>
           </section>
           <section class="panel">
@@ -48,7 +48,7 @@
               <li>Pick <em>brambleberries</em> or <em>hazel nuts</em></li>
               <li>Crush berries on the <em>millstone</em> into pulp</li>
               <li>Bake pulp — or roast a nut — at the <em>hearth</em></li>
-              <li>Walk <em>south</em> into the briar-woods and click a <em>Thornkin</em></li>
+              <li>Walk <em>south</em> into the briar-woods and click <em>near</em> a <em>Thornkin</em></li>
             </ol>
           </section>
           <section class="panel slim">
@@ -81,6 +81,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="pick-npc.js?v=click-near-2"></script>
+  <script src="app.js?v=click-near-2"></script>
 </body>
 </html>

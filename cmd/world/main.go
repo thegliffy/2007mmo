@@ -68,7 +68,7 @@ func main() {
 	mux.HandleFunc("/health", h.ServeHealth)
 	mux.HandleFunc("/stats", h.ServeStats)
 	mux.HandleFunc("/metrics", h.ServeMetrics)
-	mux.Handle("/", http.FileServer(http.Dir(webDir)))
+	mux.Handle("/", noStoreClient(http.FileServer(http.Dir(webDir))))
 
 	srv := &http.Server{Addr: httpAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -116,6 +116,18 @@ func envInt(k string, def int) int {
 		}
 	}
 	return def
+}
+
+// Live static hosting (and some browsers) keep a week-old app.js after a
+// compose rebuild. HTML/JS/CSS must revalidate so combat click fixes land.
+func noStoreClient(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch filepath.Ext(r.URL.Path) {
+		case "", ".html", ".js", ".css":
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func findWeb() string {

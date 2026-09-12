@@ -211,6 +211,9 @@ func (w *World) SetDest(id string, x, y int) {
 	if p == nil || !w.Walkable(x, y) {
 		return
 	}
+	if p.Target != "" && !w.destKeepsThreat(p, x, y) {
+		p.Target = ""
+	}
 	p.HasDest = true
 	p.DestX, p.DestY = x, y
 	p.Path = nil
@@ -783,7 +786,6 @@ func cancelAction(p *Player) {
 	p.ActionTicks = 0
 	p.ActionNode = ""
 	p.ActionItem = ""
-	p.Target = ""
 }
 
 func sortStrings(s []string) {

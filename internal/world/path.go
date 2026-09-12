@@ -100,6 +100,14 @@ func adjacent(ax, ay, bx, by int) bool {
 	return dx+dy <= 1
 }
 
+func chebyshev(ax, ay, bx, by int) int {
+	dx, dy := abs(ax-bx), abs(ay-by)
+	if dx > dy {
+		return dx
+	}
+	return dy
+}
+
 func abs(v int) int {
 	if v < 0 {
 		return -v
