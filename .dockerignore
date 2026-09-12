@@ -1,0 +1,9 @@
+.git
+.github
+*.md
+certs
+bin
+.DS_Store
+.idea
+.vscode
+scripts

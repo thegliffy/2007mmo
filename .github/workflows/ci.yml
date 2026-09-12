@@ -1,0 +1,16 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: test
+        run: go test ./...
+      - name: build
+        run: go build -o /tmp/world ./cmd/world && go build -o /tmp/bots ./cmd/bots
