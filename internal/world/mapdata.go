@@ -3,21 +3,22 @@ package world
 // Original-IP hamlet. No third-party tilesets or place names.
 //
 //	# wall   T tree   ~ water   P path
-//	. grass  H house  * fire    B bush
+//	. grass  H house  * hearth  B bramble
+//	Z hazel  M millstone
 var mapRows = []string{
 	"########################",
 	"#TTT....PPPP....TTTTTTT#",
 	"#T......P..P......B.B.T#",
 	"#.......P..P......B.B..#",
 	"#..HHH..PPPP...........#",
-	"#..H*H..P..............#",
+	"#..H*H..P...M..........#",
 	"#..HHH..P.....~~~......#",
 	"#.......P.....~~~......#",
 	"#..TTT..PPPPPPPPP......#",
 	"#.......P..............#",
 	"#.......P....~~~.......#",
 	"#TTT....P....~~~..TTT..#",
-	"#T......P..........T...#",
+	"#T.ZZ...P..........T...#",
 	"#.......P..............#",
 	"#TTTT...P.........TTTTT#",
 	"########################",
@@ -57,7 +58,7 @@ func walkableGlyph(c byte) bool {
 
 func seedNodes() []*Node {
 	var out []*Node
-	bush := 0
+	bush, hazel, mill := 0, 0, 0
 	for y, row := range mapRows {
 		for x, c := range row {
 			switch c {
@@ -70,6 +71,26 @@ func seedNodes() []*Node {
 					Y:         y,
 					Remaining: bushYield,
 					Max:       bushYield,
+				})
+			case 'Z':
+				hazel++
+				out = append(out, &Node{
+					ID:        "hazel-" + itoa(hazel),
+					Kind:      KindHazel,
+					X:         x,
+					Y:         y,
+					Remaining: hazelYield,
+					Max:       hazelYield,
+				})
+			case 'M':
+				mill++
+				out = append(out, &Node{
+					ID:        "mill-" + itoa(mill),
+					Kind:      KindMill,
+					X:         x,
+					Y:         y,
+					Remaining: 1,
+					Max:       1,
 				})
 			case '*':
 				out = append(out, &Node{

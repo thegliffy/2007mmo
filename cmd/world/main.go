@@ -67,6 +67,7 @@ func main() {
 	mux.HandleFunc("/ws", h.ServeWS)
 	mux.HandleFunc("/health", h.ServeHealth)
 	mux.HandleFunc("/stats", h.ServeStats)
+	mux.HandleFunc("/metrics", h.ServeMetrics)
 	mux.Handle("/", http.FileServer(http.Dir(webDir)))
 
 	srv := &http.Server{Addr: httpAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

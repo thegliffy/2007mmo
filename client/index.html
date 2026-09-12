@@ -8,56 +8,70 @@
 </head>
 <body>
   <div id="frame">
-    <header id="topbar">
-      <div class="brand">
-        <h1>Hollowmere</h1>
-        <p class="tag">a woodland hamlet · always online</p>
-      </div>
-      <div id="status">
-        <span id="conn" class="lamp off">offline</span>
-        <span id="tickinfo"></span>
-      </div>
-    </header>
+    <div id="frame-inner">
+      <header id="topbar">
+        <div class="brand">
+          <h1>Hollowmere</h1>
+          <p class="tag">a woodland hamlet · always online</p>
+        </div>
+        <div id="status">
+          <span id="conn" class="lamp off">offline</span>
+          <span id="tickinfo"></span>
+        </div>
+      </header>
 
-    <div id="desk">
-      <div id="stagewrap">
-        <canvas id="stage" width="768" height="512"></canvas>
-        <div id="hint">Click the ground to walk. Click a bush to forage. Click the fire to cook. WASD optional.</div>
+      <div id="desk">
+        <div id="stagewrap">
+          <div class="bevel">
+            <canvas id="stage" width="768" height="512"></canvas>
+          </div>
+          <p id="hint">Walk the grass. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. WASD if you like.</p>
+        </div>
+        <aside id="panels">
+          <section class="panel">
+            <h2>Woodland work</h2>
+            <p class="sub">Foraging and cooking. No other trades yet.</p>
+            <div id="skills"></div>
+          </section>
+          <section class="panel">
+            <h2>Pack <span class="sub">click a tart or roast to eat</span></h2>
+            <div id="inv" class="slots"></div>
+          </section>
+          <section class="panel loop">
+            <h2>The day’s loop</h2>
+            <ol>
+              <li>Pick <em>brambleberries</em> or <em>hazel nuts</em></li>
+              <li>Crush berries on the <em>millstone</em> into pulp</li>
+              <li>Bake pulp — or roast a nut — at the <em>hearth</em></li>
+            </ol>
+          </section>
+          <section class="panel slim">
+            <p class="credit">by <strong>thegliffy</strong></p>
+            <p class="credit muted">original Hollowmere · woodland life, not a studio clone</p>
+          </section>
+        </aside>
       </div>
-      <aside id="panels">
-        <section class="panel">
-          <h2>Skills</h2>
-          <div id="skills"></div>
-        </section>
-        <section class="panel">
-          <h2>Pack <span class="sub">click a tart to eat</span></h2>
-          <div id="inv" class="slots"></div>
-        </section>
-        <section class="panel slim">
-          <p class="credit">by <strong>thegliffy</strong></p>
-          <p class="credit muted">original IP · not affiliated with any old studio</p>
-        </section>
-      </aside>
+
+      <section id="chatbox">
+        <div id="log"></div>
+        <form id="chatform">
+          <input id="chat" maxlength="80" autocomplete="off" placeholder="Speak to the hamlet…" />
+          <button type="submit">Say</button>
+        </form>
+      </section>
     </div>
-
-    <section id="chatbox">
-      <div id="log"></div>
-      <form id="chatform">
-        <input id="chat" maxlength="80" autocomplete="off" placeholder="Speak to the hamlet…" />
-        <button type="submit">Say</button>
-      </form>
-    </section>
   </div>
 
   <div id="gate" class="overlay">
     <div class="scroll">
-      <h1>Hollowmere</h1>
-      <p class="tag">Enter the hamlet. Leave a name the villagers will remember.</p>
+      <p class="seal">Hollowmere</p>
+      <h1>Cross the stile</h1>
+      <p class="tag">Leave a name the villagers will remember.</p>
       <label>Display name
         <input id="name" maxlength="16" placeholder="Wanderer" />
       </label>
       <button id="enter" type="button">Enter Hollowmere</button>
-      <p class="fine">Auth is a stub. Your name and id stay in this browser so the pack persists after logout.</p>
+      <p class="fine">The gate is a stub. Your name and id stay in this browser so the pack persists after you close the tab.</p>
     </div>
   </div>
 

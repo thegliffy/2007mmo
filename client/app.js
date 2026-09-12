@@ -71,7 +71,7 @@
         name: $("name").value.trim() || localStorage.getItem(KEYS.name) || "Wanderer",
         session: localStorage.getItem(KEYS.session) || "",
       }));
-      log("sys", "The path into Hollowmere opens.");
+      log("sys", "The stile opens. Hollowmere remembers your pack.");
     };
     ws.onmessage = (ev) => {
       let msg;
@@ -171,7 +171,7 @@
     const inv = (state.you && state.you.inv) || [];
     const byId = {};
     for (const it of inv) byId[it.id] = it;
-    const order = ["berry", "tart"];
+    const order = ["berry", "pulp", "tart", "nut", "roast"];
     let html = "";
     for (const id of order) {
       const it = byId[id];
@@ -277,7 +277,7 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#f3e2c7";
       ctx.font = "16px Trebuchet MS";
-      ctx.fillText("Waiting at the gate…", 24, 40);
+      ctx.fillText("Waiting at the stile…", 24, 40);
       return;
     }
     const tw = canvas.width / m.w;
@@ -329,7 +329,9 @@
             ctx.fillRect(px, py, tw, th);
             break;
           case "B":
-            ctx.fillStyle = "#5a8f3c";
+          case "Z":
+          case "M":
+            ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
             ctx.fillRect(px, py, tw, th);
             break;
           default:
@@ -351,6 +353,32 @@
           ctx.fillRect(px + tw * 0.3, py + th * 0.48, 4, 4);
           ctx.fillRect(px + tw * 0.55, py + th * 0.58, 4, 4);
         }
+      } else if (n.kind === "hazel") {
+        ctx.fillStyle = n.ready ? "#3d5a22" : "#3a4a30";
+        ctx.beginPath();
+        ctx.ellipse(px + tw / 2, py + th * 0.6, tw * 0.34, th * 0.26, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#6b3e1a";
+        ctx.fillRect(px + tw * 0.45, py + th * 0.22, tw * 0.12, th * 0.28);
+        if (n.ready) {
+          ctx.fillStyle = "#c4a36a";
+          ctx.beginPath();
+          ctx.arc(px + tw * 0.38, py + th * 0.55, 3, 0, Math.PI * 2);
+          ctx.arc(px + tw * 0.62, py + th * 0.62, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (n.kind === "mill") {
+        ctx.fillStyle = "#8a8070";
+        ctx.beginPath();
+        ctx.arc(px + tw / 2, py + th / 2, tw * 0.36, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#4a4035";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px + tw / 2, py + th / 2, tw * 0.2, 0, Math.PI * 2);
+        ctx.moveTo(px + tw / 2, py + th * 0.22);
+        ctx.lineTo(px + tw / 2, py + th * 0.78);
+        ctx.stroke();
       } else if (n.kind === "fire") {
         ctx.fillStyle = "#5a3a18";
         ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);
@@ -390,9 +418,19 @@
       ctx.textAlign = "center";
       ctx.fillText(e.name || "?", px, py - 20);
       if (e.action && e.action !== "idle" && e.action !== "walk") {
-        ctx.fillStyle = "#8fd0ff";
-        ctx.fillText(e.action, px, py + 22);
+        ctx.fillStyle = "#fff4b0";
+        ctx.fillText(actionVoice(e.action), px, py + 22);
       }
+    }
+  }
+
+  function actionVoice(action) {
+    switch (action) {
+      case "forage": return "gathering";
+      case "mill": return "crushing";
+      case "cook": return "baking";
+      case "roast": return "roasting";
+      default: return action;
     }
   }
 

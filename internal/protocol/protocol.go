@@ -24,13 +24,23 @@ const (
 	MsgErr     = "err"
 
 	ItemBerry = "berry"
+	ItemPulp  = "pulp"
 	ItemTart  = "tart"
+	ItemNut   = "nut"
+	ItemRoast = "roast"
 
 	SkillForage = "forage"
 	SkillCook   = "cook"
 
-	KindBush = "bush"
-	KindFire = "fire"
+	KindBush  = "bush"
+	KindHazel = "hazel"
+	KindMill  = "mill"
+	KindFire  = "fire"
+
+	ActionForage = "forage"
+	ActionMill   = "mill"
+	ActionCook   = "cook"
+	ActionRoast  = "roast"
 )
 
 // In is every client → server frame. Unused fields stay empty.
@@ -143,21 +153,31 @@ type Pong struct {
 }
 
 type Stats struct {
-	World      string  `json:"world"`
-	Tick       uint64  `json:"tick"`
-	TickMs     int     `json:"tickMs"`
-	TickP50Ms  float64 `json:"tickP50Ms"`
-	TickP99Ms  float64 `json:"tickP99Ms"`
-	TickMaxMs  float64 `json:"tickMaxMs"`
-	Samples    int     `json:"samples"`
-	Online     int     `json:"online"`
-	WS         int     `json:"ws"`
-	PlayersMem int     `json:"playersMem"`
+	World        string  `json:"world"`
+	Tick         uint64  `json:"tick"`
+	TickMs       int     `json:"tickMs"`
+	TickP50Ms    float64 `json:"tickP50Ms"`
+	TickP99Ms    float64 `json:"tickP99Ms"`
+	TickMaxMs    float64 `json:"tickMaxMs"`
+	Samples      int     `json:"samples"`
+	Online       int     `json:"online"`
+	WS           int     `json:"ws"`
+	PlayersMem   int     `json:"playersMem"`
+	Joins        uint64  `json:"joins"`
+	Chats        uint64  `json:"chats"`
+	Actions      uint64  `json:"actions"`
+	LimitedHello uint64  `json:"limitedHello"`
+	LimitedWS    uint64  `json:"limitedWS"`
+	LimitedChat  uint64  `json:"limitedChat"`
+	LimitedConn  uint64  `json:"limitedConn"`
 }
 
 func Catalog() map[string]ItemInfo {
 	return map[string]ItemInfo{
-		ItemBerry: {Name: "Brambleberry", Glyph: "B"},
-		ItemTart:  {Name: "Berry tart", Glyph: "T"},
+		ItemBerry: {Name: "Brambleberry", Glyph: "Bb"},
+		ItemPulp:  {Name: "Bramble pulp", Glyph: "Pp"},
+		ItemTart:  {Name: "Hearth tart", Glyph: "Ht"},
+		ItemNut:   {Name: "Hazel nut", Glyph: "Hz"},
+		ItemRoast: {Name: "Roast hazel", Glyph: "Rh"},
 	}
 }

@@ -1,7 +1,7 @@
 {
   "name": "2007mmo",
   "private": true,
-  "description": "Hollowmere — retro 2007-style browser MMO PoC by thegliffy",
+  "description": "Hollowmere — woodland tick-MMO PoC by thegliffy",
   "scripts": {
     "start": "docker compose up --build",
     "up": "docker compose up --build",
@@ -10,6 +10,10 @@
     "world": "go run ./cmd/world",
     "bots": "go run ./cmd/bots -n 50 -addr ws://127.0.0.1:8080/ws",
     "bots:hotspot": "go run ./cmd/bots -n 200 -hotspot -duration 45s -addr ws://127.0.0.1:8080/ws",
-    "stats": "curl -s http://127.0.0.1:8080/stats"
+    "stats": "curl -s http://127.0.0.1:8080/stats",
+    "metrics": "curl -s http://127.0.0.1:8080/metrics",
+    "backup": "bash scripts/pg-backup.sh",
+    "drill": "bash scripts/pg-backup-restore-drill.sh",
+    "loop": "python3 scripts/week1-loop.py"
   }
 }

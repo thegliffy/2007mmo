@@ -94,13 +94,7 @@ func TestCannotWalkThroughTrees(t *testing.T) {
 func TestForageCommitsThenMemory(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
-	var bush *Node
-	for _, n := range w.Nodes {
-		if n.Kind == KindBush {
-			bush = n
-			break
-		}
-	}
+	bush := firstKind(w, KindBush)
 	if bush == nil {
 		t.Fatal("no bush")
 	}
@@ -153,19 +147,156 @@ func TestCookAndUse(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
 	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
-	p.Inv = []ItemStack{{ID: protocol.ItemBerry, N: 1}}
+	p.Inv = []ItemStack{{ID: protocol.ItemPulp, N: 1}}
 	fire := w.Nodes["fire-1"]
 	p.X, p.Y = fire.X, fire.Y
 	w.SetInteract("p1", fire.ID)
 	for i := 0; i < cookTicks+2; i++ {
 		w.Tick(context.Background())
 	}
-	if countItem(p.Inv, protocol.ItemBerry) != 0 || countItem(p.Inv, protocol.ItemTart) != 1 {
+	if countItem(p.Inv, protocol.ItemPulp) != 0 || countItem(p.Inv, protocol.ItemTart) != 1 {
 		t.Fatalf("cook failed: %v", p.Inv)
 	}
 	msg, ok := w.UseItem(context.Background(), "p1", protocol.ItemTart)
 	if !ok || countItem(p.Inv, protocol.ItemTart) != 0 {
 		t.Fatalf("use failed ok=%v msg=%s inv=%v", ok, msg, p.Inv)
+	}
+}
+
+func firstKind(w *World, kind string) *Node {
+	for _, n := range w.Nodes {
+		if n.Kind == kind {
+			return n
+		}
+	}
+	return nil
+}
+
+func TestBerryNeedsMillBeforeHearth(t *testing.T) {
+	w := testWorld(t, newMem())
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Inv = []ItemStack{{ID: protocol.ItemBerry, N: 1}}
+	fire := w.Nodes["fire-1"]
+	p.X, p.Y = fire.X, fire.Y
+	w.SetInteract("p1", fire.ID)
+	w.Tick(context.Background())
+	if countItem(p.Inv, protocol.ItemTart) != 0 || countItem(p.Inv, protocol.ItemBerry) != 1 {
+		t.Fatalf("whole berries should not bake: %v", p.Inv)
+	}
+	if w.TakeNote("p1") == "" {
+		t.Fatal("expected hearth hint")
+	}
+}
+
+func TestMillThenCook(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Inv = []ItemStack{{ID: protocol.ItemBerry, N: 1}}
+	mill := firstKind(w, KindMill)
+	if mill == nil {
+		t.Fatal("no millstone")
+	}
+	p.X, p.Y = mill.X, mill.Y
+	w.SetInteract("p1", mill.ID)
+	for i := 0; i < millTicks+2; i++ {
+		w.Tick(context.Background())
+	}
+	if countItem(p.Inv, protocol.ItemBerry) != 0 || countItem(p.Inv, protocol.ItemPulp) != 1 {
+		t.Fatalf("mill failed: %v", p.Inv)
+	}
+	saved := st.players["p1"]
+	if countItem(saved.Inv, protocol.ItemPulp) != 1 || countItem(saved.Inv, protocol.ItemBerry) != 0 {
+		t.Fatalf("store mill mismatch: %+v", saved.Inv)
+	}
+	fire := w.Nodes["fire-1"]
+	p.X, p.Y = fire.X, fire.Y
+	w.SetInteract("p1", fire.ID)
+	for i := 0; i < cookTicks+2; i++ {
+		w.Tick(context.Background())
+	}
+	if countItem(p.Inv, protocol.ItemTart) != 1 || countItem(p.Inv, protocol.ItemPulp) != 0 {
+		t.Fatalf("cook after mill failed: %v", p.Inv)
+	}
+}
+
+func TestHazelForageAndRoast(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	hazel := firstKind(w, KindHazel)
+	if hazel == nil {
+		t.Fatal("no hazel")
+	}
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = hazel.X, hazel.Y
+	w.SetInteract("p1", hazel.ID)
+	for i := 0; i < forageTicks+2; i++ {
+		w.Tick(context.Background())
+	}
+	if countItem(p.Inv, protocol.ItemNut) != 1 {
+		t.Fatalf("expected 1 hazel nut, inv=%v", p.Inv)
+	}
+	if st.nodes[hazel.ID].Remaining != hazelYield-1 {
+		t.Fatalf("hazel remaining=%d", st.nodes[hazel.ID].Remaining)
+	}
+	fire := w.Nodes["fire-1"]
+	p.X, p.Y = fire.X, fire.Y
+	w.SetInteract("p1", fire.ID)
+	for i := 0; i < roastTicks+2; i++ {
+		w.Tick(context.Background())
+	}
+	if countItem(p.Inv, protocol.ItemNut) != 0 || countItem(p.Inv, protocol.ItemRoast) != 1 {
+		t.Fatalf("roast failed: %v", p.Inv)
+	}
+	msg, ok := w.UseItem(context.Background(), "p1", protocol.ItemRoast)
+	if !ok || countItem(p.Inv, protocol.ItemRoast) != 0 {
+		t.Fatalf("eat roast failed ok=%v msg=%s inv=%v", ok, msg, p.Inv)
+	}
+}
+
+func TestTwoForagersOneNut(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	hazel := firstKind(w, KindHazel)
+	hazel.Remaining = 1
+	a := w.UpsertPlayer(NewPlayerRec("a", "Ann"), true)
+	b := w.UpsertPlayer(NewPlayerRec("b", "Bob"), true)
+	a.X, a.Y = hazel.X, hazel.Y
+	b.X, b.Y = hazel.X, hazel.Y
+	w.SetInteract("a", hazel.ID)
+	w.SetInteract("b", hazel.ID)
+	for i := 0; i < forageTicks+2; i++ {
+		w.Tick(context.Background())
+	}
+	got := countItem(a.Inv, protocol.ItemNut) + countItem(b.Inv, protocol.ItemNut)
+	if got != 1 {
+		t.Fatalf("expected exactly 1 nut across both, got %d (a=%v b=%v)", got, a.Inv, b.Inv)
+	}
+}
+
+func TestCrashRecoveryNoPulpDupe(t *testing.T) {
+	st := newMem()
+	w1 := testWorld(t, st)
+	p := w1.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Inv = []ItemStack{{ID: protocol.ItemBerry, N: 1}}
+	mill := firstKind(w1, KindMill)
+	p.X, p.Y = mill.X, mill.Y
+	w1.SetInteract("p1", mill.ID)
+	for i := 0; i < millTicks+2; i++ {
+		w1.Tick(context.Background())
+	}
+	if countItem(p.Inv, protocol.ItemPulp) != 1 || countItem(p.Inv, protocol.ItemBerry) != 0 {
+		t.Fatalf("setup mill: %v", p.Inv)
+	}
+
+	w2 := testWorld(t, st)
+	rec, err := st.LoadPlayer(context.Background(), "p1")
+	if err != nil || rec == nil {
+		t.Fatalf("load after crash: %v %v", rec, err)
+	}
+	p2 := w2.UpsertPlayer(rec, true)
+	if countItem(p2.Inv, protocol.ItemPulp) != 1 || countItem(p2.Inv, protocol.ItemBerry) != 0 {
+		t.Fatalf("dupe or loss after mill recovery: %v", p2.Inv)
 	}
 }
 
