@@ -9,15 +9,23 @@ import (
 )
 
 const (
-	KindBush = protocol.KindBush
-	KindFire = protocol.KindFire
+	KindBush  = protocol.KindBush
+	KindHazel = protocol.KindHazel
+	KindMill  = protocol.KindMill
+	KindFire  = protocol.KindFire
 
 	forageTicks = 2
+	millTicks   = 2
 	cookTicks   = 3
+	roastTicks  = 2
 	forageXP    = 12
+	millXP      = 10
 	cookXP      = 18
+	roastXP     = 14
 	bushYield   = 3
 	bushCD      = 12
+	hazelYield  = 2
+	hazelCD     = 14
 	maxInvStack = 99
 	spawnX      = 8
 	spawnY      = 8
@@ -34,20 +42,21 @@ type SkillState struct {
 }
 
 type Player struct {
-	ID          string
-	Name        string
-	X, Y        int
-	HasDest     bool
+	ID           string
+	Name         string
+	X, Y         int
+	HasDest      bool
 	DestX, DestY int
-	Path        []Point
-	Action      string
-	ActionTicks int
-	ActionNode  string
-	Inv         []ItemStack
-	Skills      map[string]SkillState
-	LastChat    uint64
-	Dirty       bool
-	Online      bool
+	Path         []Point
+	Action       string
+	ActionTicks  int
+	ActionNode   string
+	ActionItem   string
+	Inv          []ItemStack
+	Skills       map[string]SkillState
+	LastChat     uint64
+	Dirty        bool
+	Online       bool
 }
 
 type Node struct {
@@ -77,6 +86,7 @@ type World struct {
 	Store   Store
 	TickN   uint64
 	LastMs  float64
+	notes   map[string]string
 }
 
 func New(store Store) *World {
@@ -91,6 +101,7 @@ func New(store Store) *World {
 		NPCs:    seedNPCs(),
 		Nodes:   make(map[string]*Node),
 		Store:   store,
+		notes:   make(map[string]string),
 	}
 	for _, n := range seedNodes() {
 		world.Nodes[n.ID] = n
@@ -205,9 +216,10 @@ func (w *World) SetInteract(id, nodeID string) {
 	p.HasDest = true
 	p.DestX, p.DestY = tx, ty
 	p.Path = nil
-	if p.Action == "forage" || p.Action == "cook" {
+	if channeling(p.Action) {
 		p.Action = "idle"
 		p.ActionTicks = 0
+		p.ActionItem = ""
 	}
 }
 
@@ -276,7 +288,7 @@ func (w *World) Tick(ctx context.Context) {
 
 func (w *World) tickNodes() {
 	for _, n := range w.Nodes {
-		if n.Kind != KindBush {
+		if !gathers(n.Kind) {
 			continue
 		}
 		if n.Cooldown > 0 {
@@ -339,7 +351,7 @@ func (w *World) tickMove(p *Player) {
 }
 
 func (w *World) tickAction(ctx context.Context, p *Player) {
-	if p.Action == "forage" || p.Action == "cook" {
+	if channeling(p.Action) {
 		p.ActionTicks--
 		if p.ActionTicks > 0 {
 			return
@@ -359,20 +371,42 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 		return
 	}
 	switch n.Kind {
-	case KindBush:
+	case KindBush, KindHazel:
 		if n.Remaining <= 0 || n.Cooldown > 0 {
 			p.ActionNode = ""
 			return
 		}
-		p.Action = "forage"
+		p.Action = protocol.ActionForage
 		p.ActionTicks = forageTicks
-	case KindFire:
+		p.ActionItem = forageItem(n.Kind)
+	case KindMill:
 		if countItem(p.Inv, protocol.ItemBerry) < 1 {
+			w.note(p.ID, "The millstone waits for brambleberries.")
 			p.ActionNode = ""
 			return
 		}
-		p.Action = "cook"
-		p.ActionTicks = cookTicks
+		p.Action = protocol.ActionMill
+		p.ActionTicks = millTicks
+		p.ActionItem = protocol.ItemBerry
+	case KindFire:
+		if countItem(p.Inv, protocol.ItemPulp) >= 1 {
+			p.Action = protocol.ActionCook
+			p.ActionTicks = cookTicks
+			p.ActionItem = protocol.ItemPulp
+			return
+		}
+		if countItem(p.Inv, protocol.ItemNut) >= 1 {
+			p.Action = protocol.ActionRoast
+			p.ActionTicks = roastTicks
+			p.ActionItem = protocol.ItemNut
+			return
+		}
+		if countItem(p.Inv, protocol.ItemBerry) >= 1 {
+			w.note(p.ID, "The hearth wants pulp. Crush the berries at the millstone first.")
+		} else {
+			w.note(p.ID, "The hearth is quiet. Bring pulp or a hazel nut.")
+		}
+		p.ActionNode = ""
 	default:
 		p.ActionNode = ""
 	}
@@ -381,42 +415,60 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 func (w *World) completeAction(ctx context.Context, p *Player) {
 	n := w.Nodes[p.ActionNode]
 	action := p.Action
+	item := p.ActionItem
 	p.Action = "idle"
 	p.ActionTicks = 0
 	p.ActionNode = ""
+	p.ActionItem = ""
 	if n == nil {
 		return
 	}
 
 	next := recFromPlayer(p)
 	var nodeRec *NodeRec
+	var flavor string
 
 	switch action {
-	case "forage":
-		if n.Kind != KindBush || n.Remaining <= 0 {
+	case protocol.ActionForage:
+		want := forageItem(n.Kind)
+		if want == "" || n.Remaining <= 0 {
 			return
 		}
-		next.Inv = addItem(next.Inv, protocol.ItemBerry, 1)
-		sk := next.Skills[protocol.SkillForage]
-		sk.XP += forageXP
-		sk.Lv = LevelFromXP(sk.XP)
-		next.Skills[protocol.SkillForage] = sk
+		next.Inv = addItem(next.Inv, want, 1)
+		addSkillXP(next.Skills, protocol.SkillForage, forageXP)
 		nr := *recFromNode(n)
 		nr.Remaining--
 		if nr.Remaining <= 0 {
 			nr.Remaining = 0
-			nr.Cooldown = bushCD
+			nr.Cooldown = gatherCD(n.Kind)
 		}
 		nodeRec = &nr
-	case "cook":
-		if n.Kind != KindFire || countItem(next.Inv, protocol.ItemBerry) < 1 {
+		if want == protocol.ItemNut {
+			flavor = "A hazel nut comes free of its husk."
+		} else {
+			flavor = "You pick a brambleberry, still warm from the sun."
+		}
+	case protocol.ActionMill:
+		if n.Kind != KindMill || countItem(next.Inv, protocol.ItemBerry) < 1 {
 			return
 		}
-		next.Inv = addItem(removeItem(next.Inv, protocol.ItemBerry, 1), protocol.ItemTart, 1)
-		sk := next.Skills[protocol.SkillCook]
-		sk.XP += cookXP
-		sk.Lv = LevelFromXP(sk.XP)
-		next.Skills[protocol.SkillCook] = sk
+		next.Inv = addItem(removeItem(next.Inv, protocol.ItemBerry, 1), protocol.ItemPulp, 1)
+		addSkillXP(next.Skills, protocol.SkillCook, millXP)
+		flavor = "You crush the berries on the millstone. The pulp smells of late summer."
+	case protocol.ActionCook:
+		if n.Kind != KindFire || item != protocol.ItemPulp || countItem(next.Inv, protocol.ItemPulp) < 1 {
+			return
+		}
+		next.Inv = addItem(removeItem(next.Inv, protocol.ItemPulp, 1), protocol.ItemTart, 1)
+		addSkillXP(next.Skills, protocol.SkillCook, cookXP)
+		flavor = "The hearth gives you a tart, glazed and crumbling."
+	case protocol.ActionRoast:
+		if n.Kind != KindFire || item != protocol.ItemNut || countItem(next.Inv, protocol.ItemNut) < 1 {
+			return
+		}
+		next.Inv = addItem(removeItem(next.Inv, protocol.ItemNut, 1), protocol.ItemRoast, 1)
+		addSkillXP(next.Skills, protocol.SkillCook, roastXP)
+		flavor = "The hazel nut pops. A little smoke, a little sweetness."
 	default:
 		return
 	}
@@ -433,6 +485,9 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 		n.Remaining = nodeRec.Remaining
 		n.Cooldown = nodeRec.Cooldown
 	}
+	if flavor != "" {
+		w.note(p.ID, flavor)
+	}
 }
 
 func (w *World) UseItem(ctx context.Context, id, itemID string) (string, bool) {
@@ -440,22 +495,55 @@ func (w *World) UseItem(ctx context.Context, id, itemID string) (string, bool) {
 	if p == nil {
 		return "", false
 	}
-	if itemID != protocol.ItemTart {
-		return "You cannot use that.", false
+	switch itemID {
+	case protocol.ItemTart:
+		if countItem(p.Inv, protocol.ItemTart) < 1 {
+			return "You do not have a hearth tart.", false
+		}
+		return w.commitUse(ctx, p, protocol.ItemTart, "You eat a hearth tart. It tastes like late summer.")
+	case protocol.ItemRoast:
+		if countItem(p.Inv, protocol.ItemRoast) < 1 {
+			return "You do not have a roast hazel.", false
+		}
+		return w.commitUse(ctx, p, protocol.ItemRoast, "You eat a roast hazel. The shell-sweetness lingers.")
+	case protocol.ItemBerry:
+		return "Raw brambleberries make the eyes water. Crush them at the millstone first.", false
+	case protocol.ItemPulp:
+		return "The pulp wants a hearth, not a mouthful.", false
+	case protocol.ItemNut:
+		return "Too hard to chew raw. The hearth would be kinder.", false
+	default:
+		return "That stays in the pack.", false
 	}
-	if countItem(p.Inv, protocol.ItemTart) < 1 {
-		return "You do not have a berry tart.", false
-	}
+}
+
+func (w *World) commitUse(ctx context.Context, p *Player, itemID, flavor string) (string, bool) {
 	next := recFromPlayer(p)
-	next.Inv = removeItem(next.Inv, protocol.ItemTart, 1)
+	next.Inv = removeItem(next.Inv, itemID, 1)
 	if w.Store != nil {
 		if err := w.Store.CommitAction(ctx, next, nil); err != nil {
-			return "The world hiccuped. Try again.", false
+			return "The hamlet hiccuped. Try again.", false
 		}
 	}
 	p.Inv = next.Inv
 	p.Dirty = false
-	return "You eat a berry tart. It tastes like late summer.", true
+	return flavor, true
+}
+
+func (w *World) TakeNote(id string) string {
+	if w.notes == nil {
+		return ""
+	}
+	s := w.notes[id]
+	delete(w.notes, id)
+	return s
+}
+
+func (w *World) note(id, text string) {
+	if w.notes == nil {
+		w.notes = map[string]string{}
+	}
+	w.notes[id] = text
 }
 
 func (w *World) PersistPlayer(ctx context.Context, id string) {
@@ -497,7 +585,7 @@ func (w *World) Snapshot(id string) protocol.State {
 			Kind:  n.Kind,
 			X:     n.X,
 			Y:     n.Y,
-			Ready: n.Kind == KindFire || (n.Remaining > 0 && n.Cooldown == 0),
+			Ready: nodeReady(n),
 			Left:  n.Remaining,
 		})
 	}
@@ -541,6 +629,54 @@ func youView(p *Player) protocol.YouView {
 		Inv:        inv,
 		Skills:     sk,
 	}
+}
+
+func nodeReady(n *Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Kind == KindFire || n.Kind == KindMill {
+		return true
+	}
+	return n.Remaining > 0 && n.Cooldown == 0
+}
+
+func gathers(kind string) bool {
+	return kind == KindBush || kind == KindHazel
+}
+
+func channeling(action string) bool {
+	switch action {
+	case protocol.ActionForage, protocol.ActionMill, protocol.ActionCook, protocol.ActionRoast:
+		return true
+	default:
+		return false
+	}
+}
+
+func forageItem(kind string) string {
+	switch kind {
+	case KindBush:
+		return protocol.ItemBerry
+	case KindHazel:
+		return protocol.ItemNut
+	default:
+		return ""
+	}
+}
+
+func gatherCD(kind string) int {
+	if kind == KindHazel {
+		return hazelCD
+	}
+	return bushCD
+}
+
+func addSkillXP(skills map[string]SkillState, id string, xp int) {
+	sk := skills[id]
+	sk.XP += xp
+	sk.Lv = LevelFromXP(sk.XP)
+	skills[id] = sk
 }
 
 func ensureSkill(m map[string]SkillState, id string) {
@@ -592,6 +728,7 @@ func cancelAction(p *Player) {
 	p.Action = "idle"
 	p.ActionTicks = 0
 	p.ActionNode = ""
+	p.ActionItem = ""
 }
 
 func sortStrings(s []string) {

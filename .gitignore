@@ -26,3 +26,8 @@ dist/
 
 # go
 vendor/
+
+# postgres dumps (keep the folder)
+/backups/*.sql
+/backups/*.sql.gz
+/backups/*.dump

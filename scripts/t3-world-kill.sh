@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T3: kill the world container mid-session and confirm inventory is not duplicated.
+# T3: kill the world container mid-session and confirm the pack is not duplicated.
 # Requires: docker compose stack up, curl, python3.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,9 +14,9 @@ fi
 echo "== before kill =="
 curl -s "$STATS"
 echo
-echo "Kill world container, then bring it back. Inventory is Postgres-canonical:"
+echo "Kill world container, then bring it back. The pack is Postgres-canonical:"
 echo "  docker compose kill world && docker compose up -d world"
-echo "Reconnect the same browser (same localStorage id). Berry/tart counts must match"
+echo "Reconnect the same browser (same localStorage id). Berry/pulp/tart/nut counts must match"
 echo "the last committed action — never increase from the crash itself."
 docker compose kill world
 sleep 1

@@ -43,11 +43,25 @@ services:
       HTTP_ADDR: ":8080"
       TLS_ADDR: ":8443"
       WEB_DIR: /app/web
+      # Generous local defaults. Tighten on 2007.gliffy.tv — see docs/ops.md A4.
+      HOLLOWMERE_LIMIT_HELLO_RATE: "12"
+      HOLLOWMERE_LIMIT_HELLO_BURST: "40"
+      HOLLOWMERE_LIMIT_CONN_RATE: "20"
+      HOLLOWMERE_LIMIT_CONN_BURST: "80"
+      HOLLOWMERE_LIMIT_WS_RATE: "20"
+      HOLLOWMERE_LIMIT_WS_BURST: "32"
+      HOLLOWMERE_LIMIT_CHAT_RATE: "0.8"
+      HOLLOWMERE_LIMIT_CHAT_BURST: "4"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
 
   bots:

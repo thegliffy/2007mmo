@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T3 helper: forage, print inventory, exit. Re-run after world restart with same id."""
+"""T3 helper: forage, print pack, exit. Re-run after world restart with same id."""
 import asyncio
 import json
 import os
