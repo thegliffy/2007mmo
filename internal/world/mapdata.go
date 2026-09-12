@@ -1,27 +1,47 @@
 package world
 
-// Original-IP hamlet. No third-party tilesets or place names.
+// Original-IP hamlet plus southern briar-woods. No third-party tilesets
+// or borrowed monster names.
 //
 //	# wall   T tree   ~ water   P path
 //	. grass  H house  * hearth  B bramble
 //	Z hazel  M millstone
+//
+// The northern 15 rows keep the Week 1 hamlet coordinates (hearth, mill,
+// bramble, hazel, stile spawn). Rows below open into a woods and clearing.
 var mapRows = []string{
-	"########################",
-	"#TTT....PPPP....TTTTTTT#",
-	"#T......P..P......B.B.T#",
-	"#.......P..P......B.B..#",
-	"#..HHH..PPPP...........#",
-	"#..H*H..P...M..........#",
-	"#..HHH..P.....~~~......#",
-	"#.......P.....~~~......#",
-	"#..TTT..PPPPPPPPP......#",
-	"#.......P..............#",
-	"#.......P....~~~.......#",
-	"#TTT....P....~~~..TTT..#",
-	"#T.ZZ...P..........T...#",
-	"#.......P..............#",
-	"#TTTT...P.........TTTTT#",
-	"########################",
+	"############################",
+	"#TTT....PPPP....TTTTTTT...T#",
+	"#T......P..P......B.B.T..T.#",
+	"#.......P..P......B.B......#",
+	"#..HHH..PPPP...............#",
+	"#..H*H..P...M.........~~~..#",
+	"#..HHH..P.....~~~.....~~~..#",
+	"#.......P.....~~~..........#",
+	"#..TTT..PPPPPPPPP....TTT...#",
+	"#.......P............T.T...#",
+	"#.......P....~~~...........#",
+	"#TTT....P....~~~..TTT......#",
+	"#T.ZZ...P..........T.......#",
+	"#.......P..................#",
+	"#TTTT...P.........TTTTT....#",
+	"#.......P..................#",
+	"#.......PPPP...............#",
+	"#..TTT..P..P.....TTTT......#",
+	"#.......P..P.....T..T......#",
+	"#.......PPPP.......P.......#",
+	"#..TTT.............P...TTT.#",
+	"#..............PPPPP.......#",
+	"#..TTT.........P...P...TT..#",
+	"#..............P.~~~.P.....#",
+	"#..T...........P.~~~.P..T..#",
+	"#..............PPPPPPP.....#",
+	"#.....TTT......P.....P.TTT.#",
+	"#..............P...........#",
+	"#.....TTT......P.....P.TTT.#",
+	"#..............PPPPPPP.....#",
+	"#..T...........P.....P..T..#",
+	"############################",
 }
 
 const tileSize = 32
@@ -109,9 +129,24 @@ func seedNodes() []*Node {
 
 func seedNPCs() []*NPC {
 	return []*NPC{
-		{ID: "npc-marta", Name: "Marta", X: 4, Y: 5, WanderEvery: 4},
-		{ID: "npc-fen", Name: "Old Fen", X: 18, Y: 2, WanderEvery: 5},
-		{ID: "npc-pip", Name: "Pip", X: 9, Y: 8, WanderEvery: 2},
+		{ID: "npc-marta", Name: "Marta", X: 4, Y: 5, HomeX: 4, HomeY: 5, WanderEvery: 4, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		{ID: "npc-fen", Name: "Old Fen", X: 18, Y: 2, HomeX: 18, HomeY: 2, WanderEvery: 5, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		{ID: "npc-pip", Name: "Pip", X: 9, Y: 8, HomeX: 9, HomeY: 8, WanderEvery: 2, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		{
+			ID: "npc-thornkin-1", Name: "Thornkin", X: 10, Y: 22, HomeX: 10, HomeY: 22,
+			WanderEvery: 3, Hostile: true, HP: thornkinHP, MaxHP: thornkinHP, Dmg: thornkinDmg,
+			MinX: 6, MaxX: 16, MinY: 19, MaxY: 26,
+		},
+		{
+			ID: "npc-thornkin-2", Name: "Thornkin", X: 18, Y: 27, HomeX: 18, HomeY: 27,
+			WanderEvery: 4, Hostile: true, HP: thornkinHP, MaxHP: thornkinHP, Dmg: thornkinDmg,
+			MinX: 12, MaxX: 24, MinY: 24, MaxY: 30,
+		},
+		{
+			ID: "npc-brambleback", Name: "Brambleback", X: 16, Y: 26, HomeX: 16, HomeY: 26,
+			WanderEvery: 5, Hostile: true, HP: bramblebackHP, MaxHP: bramblebackHP, Dmg: bramblebackDmg,
+			MinX: 10, MaxX: 22, MinY: 24, MaxY: 30,
+		},
 	}
 }
 

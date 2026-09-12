@@ -117,6 +117,7 @@
         persistIdentity(msg.playerId, msg.you && msg.you.name, msg.session);
         $("gate").classList.add("hidden");
         renderSkills();
+        renderVitals();
         renderInv();
         break;
       case "state":
@@ -130,6 +131,7 @@
         state.nodes = msg.nodes || [];
         rememberPos();
         renderSkills();
+        renderVitals();
         renderInv();
         $("tickinfo").textContent = "tick " + msg.n + " · " + msg.online + " online · " + (msg.ms || 0).toFixed(1) + "ms";
         break;
@@ -165,6 +167,26 @@
     const pct = Math.min(100, Math.round(((s.xp % Math.max(need, 1)) / need) * 100));
     return '<div class="skill"><div class="row"><span>' + label + "</span><span>lv " +
       s.lv + " · " + s.xp + " xp</span></div><div class=\"bar\"><i style=\"width:" + pct + '%"></i></div></div>';
+  }
+
+  function renderVitals() {
+    const el = $("vitals");
+    if (!el) return;
+    const you = state.you || {};
+    const hp = you.hp == null ? 10 : you.hp;
+    const max = you.maxHp || 10;
+    const pct = Math.max(0, Math.min(100, Math.round((hp / Math.max(max, 1)) * 100)));
+    let targetName = "";
+    if (you.target) {
+      const n = (state.npcs || []).find((npc) => npc.id === you.target);
+      if (n) targetName = n.name + " · " + (n.hp == null ? "?" : n.hp) + "/" + (n.maxHp || "?");
+      else targetName = "closing in…";
+    }
+    el.innerHTML =
+      '<div class="vital"><div class="row"><span>Heart</span><span>' + hp + " / " + max +
+      '</span></div><div class="bar hp"><i style="width:' + pct + '%"></i></div>' +
+      (targetName ? '<p class="target">Upon the ' + esc(targetName) + "</p>" : "") +
+      "</div>";
   }
 
   function renderInv() {
@@ -205,6 +227,11 @@
   canvas.addEventListener("click", (e) => {
     const t = tileAt(e.clientX, e.clientY);
     if (!t) return;
+    const npc = (state.npcs || []).find((n) => n.x === t.x && n.y === t.y);
+    if (npc) {
+      send({ t: npc.hostile ? "attack" : "interact", id: npc.id });
+      return;
+    }
     const node = (state.nodes || []).find((n) => n.x === t.x && n.y === t.y);
     if (node) send({ t: "interact", id: node.id });
     else send({ t: "move", x: t.x, y: t.y });
@@ -397,26 +424,52 @@
     if (state.you) figures.push({ kind: "you", e: state.you });
     figures.sort((a, b) => a.e.y - b.e.y);
 
+    const targetId = state.you && state.you.target;
     for (const f of figures) {
       const e = f.e;
       const p = posOf(e.id, e.x, e.y, u);
       const px = p.x * tw + tw / 2;
       const py = p.y * th + th * 0.62;
-      const hue = f.kind === "npc" ? 35 : hashHue(e.name || e.id);
+      const hostile = f.kind === "npc" && e.hostile;
+      const hue = hostile ? 8 : f.kind === "npc" ? 35 : hashHue(e.name || e.id);
+      if (e.id && e.id === targetId) {
+        ctx.strokeStyle = "rgba(190,50,30,0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(px, py + 10, 12, 6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath();
       ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = f.kind === "you" ? "hsl(" + hue + ",70%,42%)" : "hsl(" + hue + ",45%,38%)";
+      ctx.fillStyle = f.kind === "you" ? "hsl(" + hue + ",70%,42%)" : "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
       ctx.fillRect(px - 7, py - 8, 14, 16);
-      ctx.fillStyle = "#f0d2b0";
+      if (hostile) {
+        ctx.fillStyle = "#5a2a18";
+        ctx.fillRect(px - 3, py - 16, 6, 5);
+      }
+      ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
       ctx.beginPath();
       ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = f.kind === "you" ? "#fff4b0" : "#f3e2c7";
+      ctx.fillStyle = f.kind === "you" ? "#fff4b0" : hostile ? "#f0c8a0" : "#f3e2c7";
       ctx.font = "11px Trebuchet MS";
       ctx.textAlign = "center";
       ctx.fillText(e.name || "?", px, py - 20);
+      if (e.maxHp > 0 && (f.kind === "you" || hostile)) {
+        const hp = e.hp == null ? e.maxHp : e.hp;
+        const bw = 18;
+        const bh = 3;
+        const bx = px - bw / 2;
+        const by = py - 32;
+        ctx.fillStyle = "#2a160c";
+        ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+        ctx.fillStyle = "#5a381c";
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = hostile ? "#c44" : "#6a3";
+        ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, hp / e.maxHp)), bh);
+      }
       if (e.action && e.action !== "idle" && e.action !== "walk") {
         ctx.fillStyle = "#fff4b0";
         ctx.fillText(actionVoice(e.action), px, py + 22);
@@ -430,6 +483,7 @@
       case "mill": return "crushing";
       case "cook": return "baking";
       case "roast": return "roasting";
+      case "fight": return "fighting";
       default: return action;
     }
   }

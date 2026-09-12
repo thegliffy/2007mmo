@@ -14,6 +14,7 @@
     "metrics": "curl -s http://127.0.0.1:8080/metrics",
     "backup": "bash scripts/pg-backup.sh",
     "drill": "bash scripts/pg-backup-restore-drill.sh",
-    "loop": "python3 scripts/week1-loop.py"
+    "loop": "python3 scripts/week1-loop.py",
+    "fight": "python3 scripts/south-fight.py"
   }
 }

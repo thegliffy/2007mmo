@@ -31,6 +31,7 @@ const (
 	cmdHello cmdKind = iota
 	cmdMove
 	cmdInteract
+	cmdAttack
 	cmdUse
 	cmdChat
 	cmdLeave
@@ -115,6 +116,9 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 		h.World.SetDest(c.playerID, c.x, c.y)
 	case cmdInteract:
 		h.World.SetInteract(c.playerID, c.id)
+		h.metrics.AddAction()
+	case cmdAttack:
+		h.World.SetAttack(c.playerID, c.id)
 		h.metrics.AddAction()
 	case cmdUse:
 		if text, ok := h.World.UseItem(ctx, c.playerID, c.id); text != "" {
@@ -356,6 +360,8 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdMove, client: c, playerID: c.id, x: in.X, y: in.Y}
 		case protocol.MsgInteract:
 			c.hub.cmds <- cmd{kind: cmdInteract, client: c, playerID: c.id, id: in.ID}
+		case protocol.MsgAttack:
+			c.hub.cmds <- cmd{kind: cmdAttack, client: c, playerID: c.id, id: in.ID}
 		case protocol.MsgUse:
 			c.hub.cmds <- cmd{kind: cmdUse, client: c, playerID: c.id, id: in.ID}
 		case protocol.MsgChat:

@@ -21,7 +21,10 @@ func (w *World) FindPath(sx, sy, tx, ty int) []Point {
 		return nil
 	}
 	type node struct{ x, y, i int }
-	const max = 256
+	max := w.W * w.H
+	if max < 256 {
+		max = 256
+	}
 	qx := make([]int, 0, 64)
 	qy := make([]int, 0, 64)
 	prev := make([]int, w.W*w.H)

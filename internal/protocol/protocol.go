@@ -12,6 +12,7 @@ const (
 	MsgHello    = "hello"
 	MsgMove     = "move"
 	MsgInteract = "interact"
+	MsgAttack   = "attack"
 	MsgUse      = "use"
 	MsgChat     = "chat"
 	MsgPing     = "ping"
@@ -41,6 +42,7 @@ const (
 	ActionMill   = "mill"
 	ActionCook   = "cook"
 	ActionRoast  = "roast"
+	ActionFight  = "fight"
 )
 
 // In is every client → server frame. Unused fields stay empty.
@@ -78,6 +80,9 @@ type YouView struct {
 	PlayerView
 	Inv    []Item           `json:"inv"`
 	Skills map[string]Skill `json:"skills"`
+	HP     int              `json:"hp"`
+	MaxHP  int              `json:"maxHp"`
+	Target string           `json:"target,omitempty"`
 }
 
 type NodeView struct {
@@ -90,10 +95,13 @@ type NodeView struct {
 }
 
 type NPCView struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	X    int    `json:"x"`
-	Y    int    `json:"y"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	HP      int    `json:"hp,omitempty"`
+	MaxHP   int    `json:"maxHp,omitempty"`
+	Hostile bool   `json:"hostile,omitempty"`
 }
 
 type TileMap struct {

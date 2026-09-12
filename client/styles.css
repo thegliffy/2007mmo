@@ -160,6 +160,15 @@ html, body {
   margin-top: 4px;
 }
 .bar > i { display: block; height: 100%; background: linear-gradient(#a8d86a, #4a8a28); }
+.bar.hp > i { background: linear-gradient(#d86a4a, #8a2828); }
+.vital { margin-bottom: 8px; }
+.vital .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-family: "Trebuchet MS", Verdana, sans-serif;
+}
+.vital .target { font-size: 12px; color: var(--ink-soft); margin: 4px 0 0; }
 
 .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
 .slot {

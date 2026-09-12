@@ -54,6 +54,9 @@ type Player struct {
 	ActionItem   string
 	Inv          []ItemStack
 	Skills       map[string]SkillState
+	HP           int
+	MaxHP        int
+	Target       string
 	LastChat     uint64
 	Dirty        bool
 	Online       bool
@@ -72,7 +75,17 @@ type NPC struct {
 	ID          string
 	Name        string
 	X, Y        int
+	HomeX       int
+	HomeY       int
 	WanderEvery int
+	Hostile     bool
+	HP          int
+	MaxHP       int
+	Dmg         int
+	MinX, MaxX  int
+	MinY, MaxY  int
+	Target      string
+	RespawnIn   int
 }
 
 type World struct {
@@ -162,6 +175,8 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		Y:      rec.Y,
 		Inv:    append([]ItemStack(nil), rec.Inv...),
 		Skills: rec.Skills,
+		HP:     playerMaxHP,
+		MaxHP:  playerMaxHP,
 		Online: online,
 	}
 	if !w.Walkable(p.X, p.Y) {
@@ -203,6 +218,10 @@ func (w *World) SetDest(id string, x, y int) {
 }
 
 func (w *World) SetInteract(id, nodeID string) {
+	if w.npcByID(nodeID) != nil {
+		w.SetAttack(id, nodeID)
+		return
+	}
 	p := w.Players[id]
 	n := w.Nodes[nodeID]
 	if p == nil || n == nil {
@@ -212,6 +231,7 @@ func (w *World) SetInteract(id, nodeID string) {
 	if !ok {
 		return
 	}
+	p.Target = ""
 	p.ActionNode = nodeID
 	p.HasDest = true
 	p.DestX, p.DestY = tx, ty
@@ -277,7 +297,9 @@ func (w *World) Tick(ctx context.Context) {
 
 	for _, id := range ids {
 		p := w.Players[id]
+		w.tickChase(p)
 		w.tickMove(p)
+		w.tickCombat(p)
 		w.tickAction(ctx, p)
 		if w.TickN%10 == 0 && p.Dirty {
 			_ = w.Store.SavePlayer(ctx, recFromPlayer(p))
@@ -309,12 +331,32 @@ func (w *World) tickNPCs() {
 	}
 	dirs := [4][2]int{{0, -1}, {1, 0}, {0, 1}, {-1, 0}}
 	for _, npc := range w.NPCs {
+		if npc.RespawnIn > 0 {
+			npc.RespawnIn--
+			if npc.RespawnIn == 0 {
+				npc.HP = npc.MaxHP
+				npc.X, npc.Y = npc.HomeX, npc.HomeY
+				npc.Target = ""
+			}
+			continue
+		}
+		if npc.Target != "" {
+			pl := w.Players[npc.Target]
+			if pl == nil || !pl.Online || pl.Target != npc.ID {
+				npc.Target = ""
+			} else if !adjacent(npc.X, npc.Y, pl.X, pl.Y) {
+				w.stepToward(npc, pl.X, pl.Y)
+				continue
+			} else {
+				continue
+			}
+		}
 		if npc.WanderEvery <= 0 || w.TickN%uint64(npc.WanderEvery) != 0 {
 			continue
 		}
 		d := dirs[int(w.TickN+uint64(len(npc.Name)))%4]
 		nx, ny := npc.X+d[0], npc.Y+d[1]
-		if w.Walkable(nx, ny) {
+		if w.Walkable(nx, ny) && npc.allows(nx, ny) {
 			npc.X, npc.Y = nx, ny
 		}
 	}
@@ -527,6 +569,9 @@ func (w *World) commitUse(ctx context.Context, p *Player, itemID, flavor string)
 	}
 	p.Inv = next.Inv
 	p.Dirty = false
+	if healed := applyHeal(p, foodHeal(itemID)); healed > 0 {
+		flavor = flavor + " Strength returns."
+	}
 	return flavor, true
 }
 
@@ -576,7 +621,13 @@ func (w *World) Snapshot(id string) protocol.State {
 	}
 	npcs := make([]protocol.NPCView, 0, len(w.NPCs))
 	for _, n := range w.NPCs {
-		npcs = append(npcs, protocol.NPCView{ID: n.ID, Name: n.Name, X: n.X, Y: n.Y})
+		if !n.Living() {
+			continue
+		}
+		npcs = append(npcs, protocol.NPCView{
+			ID: n.ID, Name: n.Name, X: n.X, Y: n.Y,
+			HP: n.HP, MaxHP: n.MaxHP, Hostile: n.Hostile,
+		})
 	}
 	nodes := make([]protocol.NodeView, 0, len(w.Nodes))
 	for _, n := range w.Nodes {
@@ -628,6 +679,9 @@ func youView(p *Player) protocol.YouView {
 		PlayerView: protocol.PlayerView{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Action: p.Action},
 		Inv:        inv,
 		Skills:     sk,
+		HP:         p.HP,
+		MaxHP:      p.MaxHP,
+		Target:     p.Target,
 	}
 }
 
@@ -729,6 +783,7 @@ func cancelAction(p *Player) {
 	p.ActionTicks = 0
 	p.ActionNode = ""
 	p.ActionItem = ""
+	p.Target = ""
 }
 
 func sortStrings(s []string) {
