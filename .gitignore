@@ -1,0 +1,28 @@
+# binaries
+/world
+/bots
+/bin/
+*.exe
+*.test
+*.out
+
+# certs generated at runtime
+/certs/*.crt
+/certs/*.key
+/certs/*.pem
+
+# node / editor
+node_modules/
+dist/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# env / local
+.env
+.env.local
+*.log
+
+# go
+vendor/

@@ -1,0 +1,65 @@
+# One world process + canonical Postgres + Redis session/presence.
+# T4: docker compose up --build  then open http://127.0.0.1:8080
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hollowmere
+      POSTGRES_PASSWORD: hollowmere
+      POSTGRES_DB: hollowmere
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hollowmere -d hollowmere"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  world:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      DATABASE_URL: postgres://hollowmere:hollowmere@postgres:5432/hollowmere?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      TICK_MS: "600"
+      HTTP_ADDR: ":8080"
+      TLS_ADDR: ":8443"
+      WEB_DIR: /app/web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  bots:
+    profiles: ["load"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/app/bots"]
+    command: ["-n", "200", "-hotspot", "-addr", "ws://world:8080/ws", "-stats", "http://world:8080/stats", "-duration", "45s"]
+    depends_on:
+      world:
+        condition: service_healthy
+
+volumes:
+  pgdata:
