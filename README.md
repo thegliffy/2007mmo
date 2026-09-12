@@ -14,7 +14,7 @@ This tree keeps Week 1 (woodland loop, wood HUD, ops honesty) and adds the next 
 
 1. **Southern briar-woods.** The tile map is **28×32** (was 24×16). The stile, hearth, millstone, bramble, and hazel stay where Week 1 put them. A path runs south into woods, a pond, and a clearing.
 2. **Hostile NPCs.** Two **Thornkin** and one **Brambleback** wander the south (original names). Villagers stay in the hamlet and will not fight you.
-3. **Combat v0.** Tick-authoritative **1vNPC**. Click a beast (or send `attack`) — you walk adjacent, then both sides swing once per 600ms tick. Heart and target HP show on the parchment HUD and over the sprites. A Thornkin is a win; the Brambleback can drop you.
+3. **Combat v0.** Tick-authoritative **1vNPC**. Click **near** a beast (Chebyshev ≤ 1 of the clicked tile) or send `attack` — you walk adjacent, then both sides swing once per 600ms tick. Heart and target HP show on the parchment HUD and over the sprites. A Thornkin is a win; the Brambleback can drop you.
 4. **Soft defeat.** HP to 0 wakes you at the stile with an empty threat and the same pack. Fallen beasts respawn in the clearing after a short wait. Hearth tarts and roast hazel mend a little heart.
 
 **Out of scope (still):** PvP, multi-target, character creator, skill sprawl, market, multi-world, Kubernetes.
@@ -42,7 +42,7 @@ Week 1 is still the woodland-life cut under the new map.
 ### Southern combat (Week 2)
 
 - Walk **south** from the stile along the path until the trees open.
-- Click a **Thornkin** or the **Brambleback**. The world pathfinds you adjacent, then both swing on the tick.
+- Click **near** a **Thornkin** or the **Brambleback** (the tile under the cursor can be one step off). The world pathfinds you adjacent, then both swing on the tick.
 - Heart is on the vitals panel. The target’s bar sits over the beast.
 - Lose: wake at the stile, pack intact, nothing else wiped.
 - Click grass to break off and run.
@@ -76,7 +76,9 @@ It does **not** claim 1k CCU, a skill tree, a market, quests, PvP, or multiple w
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. Enter names. Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click a Thornkin to fight. Type in the parchment log.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. Enter names. Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click **near** a Thornkin to fight. Type in the parchment log.
+
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=click-near-1` and `pick-npc.js?v=click-near-1` so a stale `app.js` from the Week 2 map ship does not keep exact-tile clicks.
 
 Headless stand-in for two tabs (needs `pip install websockets`):
 
@@ -125,7 +127,7 @@ go run ./cmd/world
 - **Forage:** bramble → brambleberry; hazel → hazel nut.
 - **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut.
 - **Use:** click a hearth tart or roast hazel in the pack (mends heart).
-- **Fight:** click a southern hostile; one swing each per tick while adjacent.
+- **Fight:** click near a southern hostile (neighbor tile is enough); one swing each per tick while adjacent.
 - **Death:** wake at the stile with full heart and the same pack.
 - **Chat:** public, one line per tick, plus a short token-bucket cap.
 - **Logout:** close the tab. Re-enter with the same browser; the pack is still there.
@@ -172,7 +174,7 @@ internal/protocol  shared JSON frames
 client/            carved wood + parchment HUD + canvas hamlet
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
-scripts/           smoke, T3 helpers, pg backup / restore / drill
+scripts/           smoke, T3 helpers, south-fight, pick-npc-test, pg backup / restore / drill
 docker-compose.yml world + postgres + redis
 ```
 

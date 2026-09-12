@@ -62,6 +62,7 @@ func (w *World) SetAttack(id, npcID string) {
 	}
 	tx, ty, ok := w.nearestAdjacent(p.X, p.Y, npc.X, npc.Y)
 	if !ok {
+		w.note(id, "There is no ground beside the "+npc.Name+" to stand on.")
 		return
 	}
 	first := p.Target != npcID

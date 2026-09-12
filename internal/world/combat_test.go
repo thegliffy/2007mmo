@@ -195,6 +195,27 @@ func TestCombatTickDoesNotMintItems(t *testing.T) {
 	}
 }
 
+func TestSetAttackNoStandTileNotes(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := firstHostile(w, "Thornkin")
+	if npc == nil {
+		t.Fatal("no thornkin")
+	}
+	// Park the beast on the NW wall corner: the tile and every cardinal
+	// neighbor are blocked, so nearestAdjacent must fail.
+	npc.X, npc.Y = 0, 0
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = spawnX, spawnY
+	w.SetAttack("p1", npc.ID)
+	if p.Target != "" {
+		t.Fatalf("should not arm a fight with no stand tile, target=%q", p.Target)
+	}
+	note := w.TakeNote("p1")
+	if note == "" {
+		t.Fatal("failed SetAttack must surface a note, not silence")
+	}
+}
+
 func TestInteractOnNPCStartsAttack(t *testing.T) {
 	w := testWorld(t, newMem())
 	npc := firstHostile(w, "Thornkin")

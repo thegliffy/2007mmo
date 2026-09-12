@@ -227,14 +227,11 @@
   canvas.addEventListener("click", (e) => {
     const t = tileAt(e.clientX, e.clientY);
     if (!t) return;
-    const npc = (state.npcs || []).find((n) => n.x === t.x && n.y === t.y);
-    if (npc) {
-      send({ t: npc.hostile ? "attack" : "interact", id: npc.id });
-      return;
-    }
-    const node = (state.nodes || []).find((n) => n.x === t.x && n.y === t.y);
-    if (node) send({ t: "interact", id: node.id });
-    else send({ t: "move", x: t.x, y: t.y });
+    const pick = globalThis.HollowmerePick;
+    const intent = pick && pick.resolveCanvasClick
+      ? pick.resolveCanvasClick(state.npcs, state.nodes, t)
+      : { t: "move", x: t.x, y: t.y };
+    send(intent);
   });
 
   const held = {};
