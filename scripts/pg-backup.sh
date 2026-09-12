@@ -25,9 +25,10 @@ if ! compose exec -T "$SERVICE" pg_isready -U hollowmere -d hollowmere >/dev/nul
   exit 1
 fi
 
-echo "dumping $SERVICE → $OUT"
+echo "dumping $SERVICE → $OUT" >&2
 compose exec -T "$SERVICE" pg_dump -U hollowmere -d hollowmere --no-owner --no-acl --format=plain \
   | gzip -c > "$OUT"
 ln -sfn "$(basename "$OUT")" "$OUT_DIR/hollowmere-latest.sql.gz"
-echo "ok $OUT ($(wc -c < "$OUT") bytes)"
+echo "ok $OUT ($(wc -c < "$OUT") bytes)" >&2
+# path only on stdout so other scripts can capture it
 echo "$OUT"

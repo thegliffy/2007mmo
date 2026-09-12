@@ -64,6 +64,7 @@ Headless stand-in for two tabs (needs `pip install websockets`):
 
 ```bash
 python3 scripts/smoke.py
+python3 scripts/week1-loop.py   # berry → mill → tart, hazel → roast, persist
 ```
 
 | Port | What |
@@ -134,7 +135,7 @@ Measured on the PoC box (Go world + Compose Postgres/Redis). Re-run after `docke
 | **T1** | Empty-world tick p99 ≲ 50ms | `curl localhost:8080/stats` after ~30s with 0–1 players | **PASS** — empty p99 **0.009ms**; after a short play session p99 **3.1ms** |
 | **T2** | ~200 bots in a hotspot: tick p99 ≲ 150ms, no WS collapse | `npm run bots:hotspot` | **PASS** — 200/200 connected, **0 drops**, tick p99 **76.7ms** |
 | **T3** | Kill world mid-session — **no item dupe** | Gather → kill world → start world → reconnect same id | **PASS** — unit tests `TestCrashRecoveryNoItemDupe` + `TestCrashRecoveryNoPulpDupe` + `scripts/t3-world-kill.sh` |
-| **T4** | `docker compose up` brings the stack; a browser can connect | `docker compose up --build` → open `:8080` | **PASS on a normal Docker Engine** — Compose builds the world image and starts Postgres + Redis + world. |
+| **T4** | `docker compose up` brings the stack; a browser can connect | `docker compose up --build` → open `:8080` | **PASS on a normal Docker Engine.** This agent VM’s Docker bridge drops inter-container packets (world cannot dial `postgres:5432` inside the compose network). Postgres + Redis still come up healthy on published ports; the Week 1 loop was played with `go run ./cmd/world` against those ports, plus `scripts/week1-loop.py` and a browser pass. |
 
 T3 rule: gather / mill / cook / eat **write Postgres first**, then update memory. A crash mid-tick loses an in-flight channel, never clones an item.
 
