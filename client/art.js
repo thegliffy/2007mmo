@@ -540,6 +540,10 @@
         const key = S && S.nodeKey(n);
         // Map glyph T already drew the ready tree or the stump.
         if (n.kind === "tree") continue;
+        // fire-1 is the hearth inside the 2×2 cottage. Drawing the
+        // plate here parks the flames on the thatch; the house hit
+        // still reports (4, 5) so cooking clicks keep working.
+        if (n.id === "fire-1") continue;
         const drew = key && blitPlate(ctx, key, n.x, n.y, cam);
         if (!drew) {
           if (n.kind === "bush") {
