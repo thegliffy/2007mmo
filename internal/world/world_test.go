@@ -7,10 +7,28 @@ import (
 	"github.com/thegliffy/2007mmo/internal/protocol"
 )
 
+// mem is a local Store double. internal/store imports this package, so
+// world tests cannot reuse store.Memory without an import cycle — but it
+// must copy exactly as deeply, or the no-dupe tests would be proving the
+// invariant against a store that aliases where Postgres does not.
 type mem struct {
 	players map[string]PlayerRec
 	nodes   map[string]NodeRec
 	fail    bool
+}
+
+func copyRec(p *PlayerRec) PlayerRec {
+	cp := *p
+	cp.Inv = append([]ItemStack(nil), p.Inv...)
+	cp.Skills = make(map[string]SkillState, len(p.Skills))
+	for k, v := range p.Skills {
+		cp.Skills[k] = v
+	}
+	if p.HP != nil {
+		hp := *p.HP
+		cp.HP = &hp
+	}
+	return cp
 }
 
 func newMem() *mem {
@@ -22,21 +40,21 @@ func (m *mem) LoadPlayer(_ context.Context, id string) (*PlayerRec, error) {
 	if !ok {
 		return nil, nil
 	}
-	cp := p
+	cp := copyRec(&p)
 	return &cp, nil
 }
 func (m *mem) SavePlayer(_ context.Context, p *PlayerRec) error {
 	if m.fail {
 		return errFail
 	}
-	m.players[p.ID] = *p
+	m.players[p.ID] = copyRec(p)
 	return nil
 }
 func (m *mem) CommitAction(_ context.Context, p *PlayerRec, n *NodeRec) error {
 	if m.fail {
 		return errFail
 	}
-	m.players[p.ID] = *p
+	m.players[p.ID] = copyRec(p)
 	if n != nil {
 		m.nodes[n.ID] = *n
 	}
@@ -388,5 +406,41 @@ func TestCrashRecoveryNoItemDupe(t *testing.T) {
 	}
 	if bush2 == nil || bush2.Remaining != bushYield-1 {
 		t.Fatalf("node not restored: %+v", bush2)
+	}
+}
+
+// Work nodes block now, so each one must still have a walkable tile
+// beside it. Blocking house tiles as well would seal the hearth inside
+// its own walls; this is the test that catches that class of mistake.
+func TestEveryNodeIsReachable(t *testing.T) {
+	w := testWorld(t, newMem())
+	for _, n := range w.Nodes {
+		if w.Walkable(n.X, n.Y) {
+			t.Errorf("%s at (%d,%d) is walkable; work nodes should block", n.ID, n.X, n.Y)
+		}
+		tx, ty, ok := w.nearestAdjacent(spawnX, spawnY, n.X, n.Y)
+		if !ok {
+			t.Fatalf("%s at (%d,%d) has no walkable tile beside it", n.ID, n.X, n.Y)
+		}
+		if !w.Walkable(tx, ty) {
+			t.Fatalf("%s: nearestAdjacent returned unwalkable (%d,%d)", n.ID, tx, ty)
+		}
+		// And it must be reachable on foot from the stile.
+		if len(w.FindPath(spawnX, spawnY, tx, ty)) == 0 && (tx != spawnX || ty != spawnY) {
+			t.Fatalf("%s: no path from the stile to (%d,%d)", n.ID, tx, ty)
+		}
+	}
+}
+
+// Hostiles must not be stranded either.
+func TestHostilesStandOnWalkableGround(t *testing.T) {
+	w := testWorld(t, newMem())
+	for _, n := range w.NPCs {
+		if !w.Walkable(n.X, n.Y) {
+			t.Errorf("%s spawns on blocked ground at (%d,%d)", n.ID, n.X, n.Y)
+		}
+		if !w.Walkable(n.HomeX, n.HomeY) {
+			t.Errorf("%s has a blocked home tile (%d,%d)", n.ID, n.HomeX, n.HomeY)
+		}
 	}
 }

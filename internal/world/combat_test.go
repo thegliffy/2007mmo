@@ -316,3 +316,79 @@ func TestSnapshotReportsVitals(t *testing.T) {
 		t.Fatal("hostile vitals missing from NPC snapshot")
 	}
 }
+
+// Health must survive a logout. While HP was not persisted, disconnecting
+// mid-fight was a free full heal — and the beast kept its wounds, so the
+// Brambleback could be worn down by reconnecting.
+func TestHealthPersistsAcrossLogout(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.HP = 4
+	p.Dirty = true
+	w.PersistPlayer(context.Background(), "p1")
+
+	rec, err := st.LoadPlayer(context.Background(), "p1")
+	if err != nil || rec == nil {
+		t.Fatalf("load: %v %v", rec, err)
+	}
+	if rec.HP == nil {
+		t.Fatal("health was not written to the store")
+	}
+	if *rec.HP != 4 {
+		t.Fatalf("stored hp = %d, want 4", *rec.HP)
+	}
+
+	// Rejoining restores the wounded state, not full health.
+	w2 := testWorld(t, st)
+	p2 := w2.UpsertPlayer(rec, true)
+	if p2.HP != 4 {
+		t.Fatalf("hp after rejoin = %d, want 4 (reconnect must not heal)", p2.HP)
+	}
+	if p2.MaxHP != playerMaxHP {
+		t.Fatalf("maxHP = %d", p2.MaxHP)
+	}
+}
+
+// A row written before health was persisted has no hp value; those
+// players should walk in at full rather than at zero.
+func TestMissingStoredHealthMeansFull(t *testing.T) {
+	w := testWorld(t, newMem())
+	rec := NewPlayerRec("legacy", "OldHand")
+	rec.HP = nil
+	p := w.UpsertPlayer(rec, true)
+	if p.HP != playerMaxHP {
+		t.Fatalf("legacy hp = %d, want %d", p.HP, playerMaxHP)
+	}
+}
+
+// Nonsense stored health must not carry into the world.
+func TestStoredHealthOutOfRangeIsClamped(t *testing.T) {
+	w := testWorld(t, newMem())
+	for _, bad := range []int{-5, 0, playerMaxHP + 99} {
+		rec := NewPlayerRec("p", "Kyle")
+		rec.HP = &bad
+		p := w.UpsertPlayer(rec, true)
+		if p.HP != playerMaxHP {
+			t.Fatalf("stored hp %d gave %d, want %d", bad, p.HP, playerMaxHP)
+		}
+	}
+}
+
+// Taking a hit marks the row for saving, or health would only persist by
+// coincidence when something else dirtied the player.
+func TestCombatDamageMarksPlayerDirty(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := w.npcByID("npc-thornkin-1")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+	p.Dirty = false
+	w.tickCombat(p)
+	if p.HP == playerMaxHP {
+		t.Skip("no damage exchanged this tick")
+	}
+	if !p.Dirty {
+		t.Fatal("taking damage did not mark the player for persistence")
+	}
+}

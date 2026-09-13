@@ -164,6 +164,7 @@ func (w *World) tickCombat(p *Player) {
 		return
 	}
 	p.HP -= npc.Dmg
+	p.Dirty = true
 	if p.HP <= 0 {
 		w.defeat(p)
 	}
