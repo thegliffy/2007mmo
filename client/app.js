@@ -19,6 +19,8 @@
     items: {},
     skillInfo: {},
     shop: null,
+    chest: null,
+    bankSlots: 20,
     heldTool: null,
     last: null,
     prevPos: {},
@@ -156,6 +158,7 @@
         state.handle = msg.handle || null;
         state.username = msg.username || null;
         if (msg.looksCatalog) state.looksCatalog = msg.looksCatalog;
+        if (msg.bankSlots) state.bankSlots = msg.bankSlots;
         $("acct-name").textContent = state.username || "";
         $("gate").classList.add("hidden");
         $("looks").classList.add("hidden");
@@ -178,6 +181,7 @@
         renderVitals();
         renderInv();
         if (state.shop) renderShop();
+        if (state.chest) renderChest();
         $("tickinfo").textContent = "tick " + msg.n + " · " + msg.online + " online · " + (msg.ms || 0).toFixed(1) + "ms";
         break;
       case "chat":
@@ -186,6 +190,7 @@
       case "evt":
         log("evt", esc(msg.text));
         if (state.shop) shopMsg(msg.text);
+        if (state.chest) chestMsg(msg.text);
         break;
       case "err":
         log("sys", esc(msg.msg));
@@ -199,9 +204,17 @@
         }
         break;
       case "trade":
+        closeChest();
         state.shop = msg;
         renderShop();
         $("shop").classList.remove("hidden");
+        break;
+      case "bank":
+        closeShop();
+        state.chest = msg;
+        if (msg.slots) state.bankSlots = msg.slots;
+        renderChest();
+        $("chest").classList.remove("hidden");
         break;
       case "pong":
         break;
@@ -320,11 +333,91 @@
     send({ t: btn.dataset.action, id: btn.dataset.id });
   });
 
-  $("shop-close").addEventListener("click", () => {
+  function closeShop() {
     state.shop = null;
     shopMsg("");
     $("shop").classList.add("hidden");
+  }
+
+  $("shop-close").addEventListener("click", closeShop);
+
+  function coinLabel(n) {
+    return n === 1 ? "1 coin" : n + " coins";
+  }
+
+  function renderSlotGrid(hostId, items, slots, dataBank) {
+    const inv = items || [];
+    let html = "";
+    for (let i = 0; i < slots; i++) {
+      const it = inv[i];
+      if (!it) {
+        html += '<div class="slot empty"></div>';
+        continue;
+      }
+      const info = state.items[it.id] || { name: it.id, glyph: "?" };
+      const tool = info.tool ? " tool" : "";
+      html +=
+        '<div class="slot' + tool + '" data-id="' + esc(it.id) + '" data-slot="' + i +
+        (dataBank ? '" data-bank="' + dataBank : "") +
+        '" title="' + esc(info.name) +
+        '"><div>' + esc(info.glyph) + "</div>" +
+        (it.n > 1 ? '<div class="qty">' + it.n + "</div>" : "") +
+        "</div>";
+    }
+    $(hostId).innerHTML = html;
+  }
+
+  function renderChest() {
+    if (!state.chest) return;
+    const you = state.you || {};
+    const slots = state.chest.slots || state.bankSlots || 20;
+    $("chest-who").textContent = state.chest.name || "The oak chest";
+    $("chest-purse").textContent = coinLabel(you.coins || 0);
+    $("chest-bankpurse").textContent = coinLabel(you.bankCoins || 0);
+    const used = (you.bank || []).length;
+    $("chest-used").textContent = used + " / " + slots;
+    renderSlotGrid("chest-pack", you.inv, PACK_SLOTS, "deposit");
+    renderSlotGrid("chest-slots", you.bank, slots, "withdraw");
+    const purseBtns = $("chest").querySelectorAll('[data-id="coins"]');
+    for (const btn of purseBtns) {
+      const all = btn.dataset.n === "all";
+      const n = all
+        ? (btn.dataset.bank === "deposit" ? you.coins : you.bankCoins)
+        : 1;
+      btn.disabled = !n;
+    }
+  }
+
+  function chestMsg(text) {
+    const el = $("chest-msg");
+    if (el) el.textContent = text || "";
+  }
+
+  function closeChest() {
+    state.chest = null;
+    chestMsg("");
+    $("chest").classList.add("hidden");
+  }
+
+  function sendBank(action, id, n) {
+    const you = state.you || {};
+    let qty = n;
+    if (n === "all") {
+      qty = id === "coins"
+        ? (action === "deposit" ? you.coins : you.bankCoins)
+        : 99;
+    }
+    qty = Number(qty) || 1;
+    send({ t: action, id: id, n: qty });
+  }
+
+  $("chest").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-bank]");
+    if (!btn || btn.disabled) return;
+    if (btn.dataset.id) sendBank(btn.dataset.bank, btn.dataset.id, btn.dataset.n || 1);
   });
+
+  $("chest-close").addEventListener("click", closeChest);
 
   function renderInv() {
     const purse = $("purse");
@@ -375,6 +468,10 @@
   $("inv").addEventListener("click", (e) => {
     const slot = e.target.closest(".slot");
     if (!slot || !slot.dataset.id) return;
+    if (state.chest) {
+      sendBank("deposit", slot.dataset.id, 1);
+      return;
+    }
     const info = state.items[slot.dataset.id] || {};
     if (info.tool && info.verb) {
       // Take it in hand; the next click on the world says what to use it on.
@@ -562,6 +659,8 @@
     state.you = null;
     state.map = null;
     $("looks").classList.add("hidden");
+    closeShop();
+    closeChest();
     $("gate").classList.remove("hidden");
     selectTab("login");
     // selectTab clears the message, so set it afterwards.
@@ -954,6 +1053,12 @@
             ctx.fillStyle = "#b08968";
             ctx.fillRect(px, py, tw, th);
             break;
+          case "E":
+            ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
+            ctx.fillRect(px, py, tw, th);
+            ctx.fillStyle = "#6b4423";
+            ctx.fillRect(px + 3, py + th * 0.55, tw - 6, th * 0.28);
+            break;
           case "C":
           case "N":
           case "K":
@@ -1065,6 +1170,20 @@
         ctx.font = Math.max(9, Math.floor(th * 0.28)) + "px Trebuchet MS";
         ctx.textAlign = "center";
         ctx.fillText("anvil", px + tw / 2, py + th * 0.22);
+      } else if (n.kind === "chest") {
+        ctx.fillStyle = "#6b3e1a";
+        ctx.fillRect(px + tw * 0.16, py + th * 0.38, tw * 0.68, th * 0.46);
+        ctx.fillStyle = "#8a5a28";
+        ctx.fillRect(px + tw * 0.16, py + th * 0.28, tw * 0.68, th * 0.16);
+        ctx.fillStyle = "#c4a36a";
+        ctx.fillRect(px + tw * 0.44, py + th * 0.48, tw * 0.12, th * 0.1);
+        ctx.strokeStyle = "#3d2412";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + tw * 0.16, py + th * 0.28, tw * 0.68, th * 0.56);
+        ctx.fillStyle = "#c4a36a";
+        ctx.font = Math.max(8, Math.floor(th * 0.22)) + "px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText("chest", px + tw / 2, py + th * 0.2);
       } else if (n.kind === "fire") {
         ctx.fillStyle = "#5a3a18";
         ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);

@@ -20,6 +20,7 @@ type mem struct {
 func copyRec(p *PlayerRec) PlayerRec {
 	cp := *p
 	cp.Inv = append([]ItemStack(nil), p.Inv...)
+	cp.Bank = append([]ItemStack(nil), p.Bank...)
 	cp.Skills = make(map[string]SkillState, len(p.Skills))
 	for k, v := range p.Skills {
 		cp.Skills[k] = v

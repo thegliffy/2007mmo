@@ -83,6 +83,7 @@ func (m *Memory) UpsertNode(_ context.Context, n world.NodeRec) error {
 func copyRec(p *world.PlayerRec) world.PlayerRec {
 	cp := *p
 	cp.Inv = append([]world.ItemStack(nil), p.Inv...)
+	cp.Bank = append([]world.ItemStack(nil), p.Bank...)
 	cp.Skills = copySkills(p.Skills)
 	if p.HP != nil {
 		hp := *p.HP

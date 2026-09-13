@@ -33,6 +33,8 @@ const (
 	cmdLight
 	cmdBuy
 	cmdSell
+	cmdDeposit
+	cmdWithdraw
 	cmdChat
 	cmdLeave
 	cmdLooks
@@ -45,6 +47,7 @@ type cmd struct {
 	x, y     int
 	id       string
 	text     string
+	n        int
 	looks    protocol.Looks
 }
 
@@ -173,6 +176,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.broadcastState()
 			h.flushNotes()
 			h.flushTrades()
+			h.flushBanks()
 			h.metrics.ObserveLoop(time.Since(start))
 		}
 	}
@@ -218,6 +222,22 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 		}
 	case cmdSell:
 		if text, ok := h.World.Sell(ctx, c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdDeposit:
+		if text, ok := h.World.Deposit(ctx, c.playerID, c.id, c.n); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdWithdraw:
+		if text, ok := h.World.Withdraw(ctx, c.playerID, c.id, c.n); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
 			if ok {
 				h.metrics.AddAction()
@@ -326,6 +346,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		Items:        protocol.Catalog(),
 		Skills:       protocol.SkillCatalog(),
 		LooksCatalog: protocol.AppearanceCatalog(),
+		BankSlots:    protocol.BankSlots,
 	})
 	h.sendJSON(cl, h.World.Snapshot(p.ID))
 }
@@ -357,6 +378,28 @@ func (h *Hub) flushTrades() {
 		h.mu.Unlock()
 		h.sendJSON(cl, protocol.Trade{
 			T: protocol.MsgTrade, With: with, Offers: world.TradeBoard(),
+		})
+	}
+}
+
+// flushBanks pushes the lid to anyone who just reached the oak chest.
+func (h *Hub) flushBanks() {
+	h.mu.Lock()
+	ids := make([]string, 0, len(h.clients))
+	for id := range h.clients {
+		ids = append(ids, id)
+	}
+	h.mu.Unlock()
+	for _, id := range ids {
+		name := h.World.TakeBankOpen(id)
+		if name == "" {
+			continue
+		}
+		h.mu.Lock()
+		cl := h.clients[id]
+		h.mu.Unlock()
+		h.sendJSON(cl, protocol.Bank{
+			T: protocol.MsgBank, Name: name, Slots: protocol.BankSlots,
 		})
 	}
 }
@@ -631,6 +674,10 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdBuy, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgSell:
 			c.hub.cmds <- cmd{kind: cmdSell, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgDeposit:
+			c.hub.cmds <- cmd{kind: cmdDeposit, client: c, playerID: c.playerID, id: in.ID, n: in.N}
+		case protocol.MsgWithdraw:
+			c.hub.cmds <- cmd{kind: cmdWithdraw, client: c, playerID: c.playerID, id: in.ID, n: in.N}
 		case protocol.MsgChat:
 			if !c.hub.limits.chat.allow(key) {
 				c.hub.metrics.AddLimited("chat")

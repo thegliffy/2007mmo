@@ -138,6 +138,48 @@ async def main():
         raise AssertionError("double-pickup pack: %s" % st["you"]["inv"])
     print("double-pickup berries", count(st["you"]["inv"], "berry"))
 
+    # Oak chest: deposit one berry twice, then drop the socket and come
+    # back. The chest must hold one, not two, and withdraw must give it back.
+    chest = by_kind.get("chest", [None])[0]
+    if not chest:
+        raise AssertionError("welcome carried no oak chest")
+    packed = count(st["you"]["inv"], "berry")
+    if packed < 1:
+        await ws.send(json.dumps({"t": "interact", "id": bush["id"]}))
+        inv, st = await wait_inv(ws, "berry", 1)
+        packed = count(inv, "berry")
+    await ws.send(json.dumps({"t": "interact", "id": chest["id"]}))
+    await wait_idle(ws)
+    await ws.send(json.dumps({"t": "deposit", "id": "berry", "n": 1}))
+    await ws.send(json.dumps({"t": "deposit", "id": "berry", "n": 1}))
+    st = None
+    for _ in range(12):
+        st = await read_until(ws, "state")
+        if count(st["you"].get("bank"), "berry") == 1:
+            break
+    if not st or count(st["you"].get("bank"), "berry") != 1:
+        raise AssertionError("double-deposit chest: %s" % (st["you"] if st else None))
+    if count(st["you"]["inv"], "berry") != packed - 1:
+        raise AssertionError("double-deposit pack: %s" % st["you"]["inv"])
+    print("double-deposit chest berries", count(st["you"].get("bank"), "berry"))
+
+    await ws.close()
+    print("dropped after chest deposit")
+    ws, _ = await hollow_auth.connect(URL, cookie)
+    await ws.send(json.dumps({"t": "hello"}))
+    welcome = await read_until(ws, "welcome")
+    if count(welcome["you"].get("bank"), "berry") != 1:
+        raise AssertionError("relog lost the chest: %s" % welcome["you"].get("bank"))
+    await ws.send(json.dumps({"t": "withdraw", "id": "berry", "n": 1}))
+    await ws.send(json.dumps({"t": "withdraw", "id": "berry", "n": 1}))
+    for _ in range(12):
+        st = await read_until(ws, "state")
+        if count(st["you"].get("bank"), "berry") == 0:
+            break
+    if count(st["you"].get("bank"), "berry") != 0:
+        raise AssertionError("double-withdraw left berries in the chest: %s" % st["you"].get("bank"))
+    print("relog withdraw pack berries", count(st["you"]["inv"], "berry"))
+
     await ws.close()
     print("NO-DUPE CHAOS PASS")
 

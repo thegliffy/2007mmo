@@ -8,6 +8,13 @@ const (
 	MaxNameLen = 16
 	MaxChatLen = 80
 	InvSlots   = 28
+	// BankSlots is the personal chest. Smaller than the pack on purpose:
+	// the pack is what you carry; the chest is overflow that stays put.
+	BankSlots = 20
+
+	// TokenCoins is the deposit/withdraw id for the purse. Coins are not
+	// a catalogue item and never occupy a pack or chest slot.
+	TokenCoins = "coins"
 
 	MsgHello    = "hello"
 	MsgMove     = "move"
@@ -19,6 +26,8 @@ const (
 	MsgLight    = "light"
 	MsgBuy      = "buy"
 	MsgSell     = "sell"
+	MsgDeposit  = "deposit"
+	MsgWithdraw = "withdraw"
 	MsgPing     = "ping"
 
 	MsgWelcome = "welcome"
@@ -31,6 +40,7 @@ const (
 	MsgPong  = "pong"
 	MsgErr   = "err"
 	MsgTrade = "trade"
+	MsgBank  = "bank"
 
 	// Err codes on {"t":"err"}. The client stops reconnecting on these.
 	ErrReplaced = "replaced"
@@ -85,6 +95,7 @@ const (
 	KindTin    = "tin"
 	KindKiln   = "kiln"
 	KindAnvil  = "anvil"
+	KindChest  = "chest"
 
 	ActionForage = "forage"
 	ActionMill   = "mill"
@@ -110,6 +121,8 @@ type In struct {
 	ID   string `json:"id,omitempty"`
 	Text string `json:"text,omitempty"`
 	Ts   int64  `json:"ts,omitempty"`
+	// N is how many to move (deposit / withdraw). Zero means one.
+	N int `json:"n,omitempty"`
 }
 
 type Item struct {
@@ -144,7 +157,10 @@ type YouView struct {
 	HP     int              `json:"hp"`
 	MaxHP  int              `json:"maxHp"`
 	Coins  int              `json:"coins"`
-	Target string           `json:"target,omitempty"`
+	// Bank is this player's chest only. It never appears on PlayerView.
+	Bank      []Item `json:"bank"`
+	BankCoins int    `json:"bankCoins"`
+	Target    string `json:"target,omitempty"`
 }
 
 // GroundView is a pile lying in the grass.
@@ -162,6 +178,15 @@ type Trade struct {
 	T      string       `json:"t"`
 	With   string       `json:"with"`
 	Offers []TradeOffer `json:"offers"`
+}
+
+// Bank is pushed when a player reaches the hamlet chest. Contents live
+// on YouView (and therefore on every later state frame); this frame is
+// only the lid opening.
+type Bank struct {
+	T     string `json:"t"`
+	Name  string `json:"name"`
+	Slots int    `json:"slots"`
 }
 
 type GroundView struct {
@@ -236,6 +261,7 @@ type Welcome struct {
 	// LooksCatalog lets a returning client paint peers without a second
 	// round-trip to the creator endpoint.
 	LooksCatalog LooksCatalog `json:"looksCatalog,omitempty"`
+	BankSlots    int          `json:"bankSlots,omitempty"`
 }
 
 // Auth frames are HTTP JSON, not WebSocket, but they live here so the

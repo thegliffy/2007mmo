@@ -2,8 +2,8 @@
 # Dump the Compose Postgres volume to backups/.
 # The dump is the whole hollowmere database:
 #   accounts          login names, scrypt hashes, roles, bans
-#   players           pack JSON, skills, hp, coins, account_id
-#   nodes             bramble / hazel / trees / copper / tin / kiln / anvil
+#   players           pack JSON, skills, hp, coins, bank JSON, bank_coins, account_id, looks
+#   nodes             bramble / hazel / trees / copper / tin / kiln / anvil / chest
 #   admin_actions     host-tool audit log
 #   schema_migrations
 # Loot piles and in-flight channels are memory-only and are not in the dump.

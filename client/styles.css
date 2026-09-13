@@ -348,6 +348,24 @@ html, body {
 #shop-close { width: 100%; margin-top: 14px; }
 .shopempty { font-size: 13px; color: var(--ink-soft); padding: 6px 2px; }
 
+/* ---- the oak chest ---- */
+.chestscroll { width: 640px; max-width: 94vw; }
+.chest-purses {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+}
+.chest-purses > div { flex: 1; min-width: 0; }
+.chest-coinbtns { display: flex; gap: 6px; }
+.chest-coinbtns .shoprow { flex: 1; justify-content: center; }
+#chest-pack, #chest-slots {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+#chest-close { width: 100%; margin-top: 14px; }
+#chest-used { font-weight: normal; text-transform: none; letter-spacing: 0; }
+
 /* ---- auth portal ---- */
 .tabs {
   display: flex;

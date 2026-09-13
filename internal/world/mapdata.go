@@ -7,6 +7,7 @@ package world
 //	. grass  H house  * hearth  B bramble
 //	Z hazel  M millstone
 //	C copper N tin    K kiln    A anvil
+//	E oak chest (personal bank, by the stile)
 //
 // Everything a player cannot stand on blocks: walls, trees, water, and
 // the work nodes themselves. You reach a bramble or the hearth from an
@@ -29,7 +30,7 @@ var mapRows = []string{
 	"#..H*H..P...M.........~~~..P..P..C.C..T#",
 	"#..HHH..P.....~~~.....~~~..P.KP.......T#",
 	"#.......P.....~~~..........P..P.N.N....#",
-	"#..TTT..PPPPPPPPP....TTT...PPPPP....N.T#",
+	"#..TTT.EPPPPPPPPP....TTT...PPPPP....N.T#",
 	"#.......P............T.T.....A.P.N....T#",
 	"#.......P....~~~...............P...N..T#",
 	"#TTT....P....~~~..TTT......TT..PPP....T#",
@@ -80,7 +81,7 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 func seedNodes() []*Node {
 	var out []*Node
 	bush, hazel, mill, tree := 0, 0, 0, 0
-	copper, tin, kiln, anvil := 0, 0, 0, 0
+	copper, tin, kiln, anvil, chest := 0, 0, 0, 0, 0
 	for y, row := range mapRows {
 		for x, c := range row {
 			switch c {
@@ -180,6 +181,16 @@ func seedNodes() []*Node {
 					Remaining: 1,
 					Max:       1,
 				})
+			case 'E':
+				chest++
+				out = append(out, &Node{
+					ID:        "chest-" + itoa(chest),
+					Kind:      KindChest,
+					X:         x,
+					Y:         y,
+					Remaining: 1,
+					Max:       1,
+				})
 			}
 		}
 	}
@@ -242,7 +253,7 @@ func seedNPCs() []*NPC {
 // walkable so the hearth is not sealed inside its own walls.
 func tileBlocks(c byte) bool {
 	switch c {
-	case '#', 'T', '~', 'B', 'Z', 'M', '*', 'C', 'N', 'K', 'A':
+	case '#', 'T', '~', 'B', 'Z', 'M', '*', 'C', 'N', 'K', 'A', 'E':
 		return true
 	}
 	return false

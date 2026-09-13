@@ -2,7 +2,7 @@
 
 How Kyle runs the live Compose stack at **2007.gliffy.tv** without pretending we have Kubernetes.
 
-The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (accounts, packs, coins, node remaining). Redis holds **login sessions** and presence — you do not need a Redis dump to keep tarts or bronze, but flushing Redis **logs everybody out**.
+The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (accounts, packs, coins, personal chest, node remaining). Redis holds **login sessions** and presence — you do not need a Redis dump to keep tarts, bronze, or what you left in the oak chest, but flushing Redis **logs everybody out**.
 
 All commands below assume you are in the git checkout that `docker compose` uses on that host (the same tree you would `git pull` into). On the live box the world is published at **127.0.0.1:28080** and Caddy terminates TLS in front of it. The snippet the host should be running is [`deploy/caddy/Caddyfile.snippet`](../deploy/caddy/Caddyfile.snippet).
 
@@ -18,12 +18,12 @@ Do these from the live checkout after every merge to `main`, and whenever you wa
 | 4 | Pull and rebuild | see **A1** |
 | 5 | Health (public) | `curl -sf https://2007.gliffy.tv/health` |
 | 6 | Stats (on the box only) | `curl -s http://127.0.0.1:28080/stats` — watch `lagP99Ms`, `online`, `ws`, `reconnects` |
-| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=p1-looks` |
+| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=p2-bank` |
 | 8 | Rollback if the world is wrong | **A2** |
 
 `/stats` and `/metrics` are **404 at the edge on purpose**. Do not curl them via `https://2007.gliffy.tv`.
 
-Out of scope for this P0 cut: bank, new skills or regions, recustomize NPC. P1 appearance (skin / hair / tunic) lives on `players.looks`.
+P1 appearance (skin / hair / tunic) lives on `players.looks`. P2 bank lives on `players.bank` / `players.bank_coins` — personal, no shared stash. Out of scope still: player trade, GE, new skills or regions.
 
 ## A1 — Deploy
 
@@ -65,8 +65,8 @@ Open the site and **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser d
 `client/index.html` pins the scripts:
 
 ```
-script src="app.js?v=p0-2"
-script src="pick-npc.js?v=p0-2"
+script src="app.js?v=p2-bank"
+script src="pick-npc.js?v=p2-bank"
 ```
 
 Bump that `?v=` whenever a client fix must land through a cache. The world also sends `Cache-Control: no-cache` on HTML/JS/CSS; the query string is the belt as well as the braces.
@@ -103,7 +103,7 @@ The dump is the whole `hollowmere` database, which today is:
 | Table | What you get back |
 |-------|-------------------|
 | `accounts` | names, scrypt hashes, roles, bans |
-| `players` | pack JSON, skills (including Mining / Smithing), hp, coins, `account_id`, `looks` (appearance JSON, null until the creator runs) |
+| `players` | pack JSON, skills (including Mining / Smithing), hp, coins, personal chest (`bank` JSON + `bank_coins`), `account_id`, `looks` (appearance JSON, null until the creator runs) |
 | `nodes` | bramble, hazel, trees, copper, tin, kiln, anvil remaining / cooldown |
 | `admin_actions` | host-tool audit log |
 | `schema_migrations` | which steps have run |
@@ -352,6 +352,6 @@ What is still open, and belongs with P1 feel work rather than this gate:
 Against a local stack, not the live host:
 
 ```bash
-python3 scripts/nodupe-chaos.py          # double-click, drop mid-channel, pedlar, pile
-go test ./internal/world/ -count=1 -run 'Dupe|Crash|Double|Disconnect|StoreFails|Aborted'
+python3 scripts/nodupe-chaos.py          # double-click, drop mid-channel, pedlar, pile, chest
+go test ./internal/world/ -count=1 -run 'Dupe|Crash|Double|Disconnect|StoreFails|Aborted|Bank|Chest|Deposit|Withdraw'
 ```

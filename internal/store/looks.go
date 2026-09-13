@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/thegliffy/2007mmo/internal/protocol"
+	"github.com/thegliffy/2007mmo/internal/world"
 )
 
 // marshalLooks writes a finished face as JSON. Unset stays SQL NULL so
@@ -20,4 +21,11 @@ func unmarshalLooks(raw []byte, dest *protocol.Looks) error {
 		return nil
 	}
 	return json.Unmarshal(raw, dest)
+}
+
+func marshalBank(bank []world.ItemStack) ([]byte, error) {
+	if bank == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(bank)
 }

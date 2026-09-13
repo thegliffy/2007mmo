@@ -260,3 +260,72 @@ func TestPGLooksPersistAndFirstWriteWins(t *testing.T) {
 		t.Fatalf("pack write wiped looks: %+v", kept.Looks)
 	}
 }
+
+func TestPGBankPersistsAndPackWriteKeepsIt(t *testing.T) {
+	pg := testPG(t)
+	ctx := context.Background()
+	a := auth.Account{ID: "acct-1", Username: "Kyle", UsernameKey: "kyle", PWHash: "h"}
+	if err := pg.CreateAccount(ctx, a, "player-1", "Kyle"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	rec, err := pg.LoadPlayer(ctx, "player-1")
+	if err != nil || rec == nil {
+		t.Fatalf("load: %v %v", rec, err)
+	}
+	if len(rec.Bank) != 0 || rec.BankCoins != 0 {
+		t.Fatalf("a fresh row must have an empty chest: %+v coins=%d", rec.Bank, rec.BankCoins)
+	}
+
+	rec.Bank = []world.ItemStack{{ID: protocol.ItemBerry, N: 3}, {ID: protocol.ItemAxe, N: 1}}
+	rec.BankCoins = 14
+	rec.Inv = []world.ItemStack{{ID: protocol.ItemNut, N: 2}}
+	rec.Coins = 5
+	if err := pg.SavePlayer(ctx, rec); err != nil {
+		t.Fatalf("save bank: %v", err)
+	}
+
+	relog, err := pg.LoadPlayer(ctx, "player-1")
+	if err != nil || relog == nil {
+		t.Fatalf("relog: %v %v", relog, err)
+	}
+	if len(relog.Bank) != 2 || relog.Bank[0].ID != protocol.ItemBerry || relog.Bank[0].N != 3 {
+		t.Fatalf("relog bank = %+v", relog.Bank)
+	}
+	if relog.BankCoins != 14 || relog.Coins != 5 {
+		t.Fatalf("relog coins purse=%d chest=%d", relog.Coins, relog.BankCoins)
+	}
+
+	// A later pack write must not wipe the chest, and a chest write must
+	// not wipe the face if one has been carved.
+	first := protocol.Looks{
+		Skin: protocol.SkinOlive, Hair: protocol.HairTied,
+		HairColor: protocol.HairRusset, Top: protocol.TopInk,
+	}
+	if _, wrote, err := world.ApplyLooksFirst(ctx, pg, relog, first); err != nil || !wrote {
+		t.Fatalf("looks: wrote=%v err=%v", wrote, err)
+	}
+	relog, err = pg.LoadPlayer(ctx, "player-1")
+	if err != nil || relog == nil {
+		t.Fatalf("load after looks: %v %v", relog, err)
+	}
+	relog.Inv = append(relog.Inv, world.ItemStack{ID: protocol.ItemLog, N: 1})
+	if err := pg.SavePlayer(ctx, relog); err != nil {
+		t.Fatalf("pack write: %v", err)
+	}
+	kept, _ := pg.LoadPlayer(ctx, "player-1")
+	if kept.Looks != first {
+		t.Fatalf("pack write wiped looks: %+v", kept.Looks)
+	}
+	if len(kept.Bank) != 2 || kept.BankCoins != 14 {
+		t.Fatalf("pack write wiped the chest: bank=%+v coins=%d", kept.Bank, kept.BankCoins)
+	}
+
+	// Unreadable bank JSON must refuse rather than hand back an empty chest.
+	if _, err := pg.pool.Exec(ctx, `UPDATE players SET bank='not-json' WHERE id='player-1'`); err != nil {
+		t.Fatalf("corrupt: %v", err)
+	}
+	if _, err := pg.LoadPlayer(ctx, "player-1"); err == nil {
+		t.Fatal("corrupt bank json loaded as an empty chest")
+	}
+}

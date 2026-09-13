@@ -101,6 +101,7 @@ func (w *World) SetTrade(id, npcID string) {
 	p.Target = ""
 	p.ActionNode = ""
 	p.ActionGround = ""
+	p.ActionChest = ""
 	p.ActionTrader = npcID
 	p.HasDest = true
 	p.DestX, p.DestY = tx, ty
