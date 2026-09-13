@@ -35,6 +35,9 @@ const (
 	// Err codes on {"t":"err"}. The client stops reconnecting on these.
 	ErrReplaced = "replaced"
 	ErrSession  = "session"
+	// ErrLooks tells the client to stop at the creator rather than
+	// walking into the world without a face the hamlet can see.
+	ErrLooks = "looks"
 
 	// SessionCookie carries the login session. HttpOnly: script must not
 	// be able to read or forward it.
@@ -130,6 +133,8 @@ type PlayerView struct {
 	X      int    `json:"x"`
 	Y      int    `json:"y"`
 	Action string `json:"action,omitempty"`
+	// Looks is what peers paint. Omitted when the creator has not run.
+	Looks *Looks `json:"looks,omitempty"`
 }
 
 type YouView struct {
@@ -228,6 +233,9 @@ type Welcome struct {
 	You      YouView              `json:"you"`
 	Items    map[string]ItemInfo  `json:"items"`
 	Skills   map[string]SkillInfo `json:"skillInfo"`
+	// LooksCatalog lets a returning client paint peers without a second
+	// round-trip to the creator endpoint.
+	LooksCatalog LooksCatalog `json:"looksCatalog,omitempty"`
 }
 
 // Auth frames are HTTP JSON, not WebSocket, but they live here so the
@@ -242,8 +250,12 @@ type AuthRequest struct {
 }
 
 type AuthResponse struct {
-	Username string `json:"username"`
+	Username string `json:"username,omitempty"`
 	World    string `json:"world"`
+	// Looks is set once the creator has been finished. NeedsLooks is
+	// the gate: a returning player with Looks skips the parchment.
+	Looks      *Looks `json:"looks,omitempty"`
+	NeedsLooks bool   `json:"needsLooks,omitempty"`
 }
 
 type AuthError struct {

@@ -151,6 +151,9 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 		authFails.Add(1)
 		return
 	}
+	// A face so load figures are not nameless blobs. Idempotent: a
+	// second run of the harness keeps the first carve.
+	_ = botLooks(statsURL, cookie, i)
 
 	dialer := websocket.Dialer{HandshakeTimeout: 8 * time.Second}
 	hdr := http.Header{}
@@ -418,6 +421,46 @@ func botSession(statsURL, username, password string) (string, error) {
 		return "", fmt.Errorf("login %s: status %d", username, code)
 	}
 	return "", fmt.Errorf("login %s: throttled out", username)
+}
+
+func botLooks(statsURL, cookie string, i int) error {
+	base, err := url.Parse(statsURL)
+	if err != nil {
+		return err
+	}
+	cat := protocol.AppearanceCatalog()
+	pick := func(opts []protocol.LooksOption) string {
+		if len(opts) == 0 {
+			return ""
+		}
+		return opts[i%len(opts)].ID
+	}
+	body, err := json.Marshal(protocol.Looks{
+		Skin: pick(cat.Skin), Hair: pick(cat.Hair),
+		HairColor: pick(cat.HairColor), Top: pick(cat.Top),
+	})
+	if err != nil {
+		return err
+	}
+	u := *base
+	u.Path = "/auth/looks"
+	u.RawQuery = ""
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("looks: status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func sessionCookie(resp *http.Response) string {

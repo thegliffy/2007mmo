@@ -98,6 +98,36 @@ def login(ws_url, username, password=DEFAULT_PASSWORD):
     return f"{SESSION_COOKIE}={token}"
 
 
+# Closed v0 palette — same ids the world accepts. A smoke script that
+# skips this still gets in; the hamlet just sees the default paperdoll.
+_DEFAULT_LOOKS = {
+    "skin": "tan",
+    "hair": "short",
+    "hairColor": "umber",
+    "top": "moss",
+}
+
+
+def carve_looks(ws_url, cookie, looks=None):
+    """First-write the appearance creator. Spam-safe: a second call is a no-op."""
+    base = http_base(ws_url)
+    req = urllib.request.Request(
+        base + "/auth/looks",
+        data=json.dumps(looks or _DEFAULT_LOOKS).encode(),
+        headers={"Content-Type": "application/json", "Cookie": cookie},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status
+    except urllib.error.HTTPError as err:
+        if err.code in (200, 201):
+            return err.code
+        raise RuntimeError(
+            f"looks: HTTP {err.code} {err.read().decode(errors='replace').strip()}"
+        )
+
+
 def fresh_name(prefix):
     """A per-run account name, for scripts that assert on an empty pack.
 
@@ -129,6 +159,7 @@ async def join(ws_url, username, password=DEFAULT_PASSWORD):
     on the upgrade already settled who this socket is.
     """
     cookie = login(ws_url, username, password)
+    carve_looks(ws_url, cookie)
     ws = await connect(ws_url, cookie)
     await ws.send(json.dumps({"t": "hello"}))
     return ws, cookie

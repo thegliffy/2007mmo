@@ -25,6 +25,7 @@
           <div class="bevel">
             <canvas id="stage" width="1200" height="960"></canvas>
           </div>
+          <p id="crumbs">Wend sells a quarry pick · South of the stile, fight · East, the scars</p>
           <p id="hint">Walk the grass. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
         </div>
         <aside id="panels">
@@ -116,6 +117,26 @@
     </div>
   </div>
 
+  <div id="looks" class="overlay hidden">
+    <div class="scroll looksscroll">
+      <p class="seal">Hollowmere</p>
+      <h1>Carve your looks</h1>
+      <p class="tag">The hamlet already knows you as <strong id="looks-name"></strong>. Pick a face the woods will remember. No class, no numbers — you train by doing.</p>
+      <div class="looks-desk">
+        <div class="looks-preview-wrap">
+          <canvas id="looks-preview" width="180" height="220"></canvas>
+          <p class="fine">A paperdoll for now. Same colours the hamlet will see.</p>
+        </div>
+        <form id="form-looks" class="looks-axes">
+          <div id="looks-pickers"></div>
+          <p class="crumbs">Wend sells a quarry pick. South of the stile, fight. East, the scars.</p>
+          <button id="do-looks" type="submit">Step onto the stile</button>
+        </form>
+      </div>
+      <p id="looks-msg" class="authmsg" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
   <div id="gate" class="overlay">
     <div class="scroll">
       <p class="seal">Hollowmere</p>
@@ -161,7 +182,7 @@
     </div>
   </div>
 
-  <script src="pick-npc.js?v=p0-2"></script>
-  <script src="app.js?v=p0-2"></script>
+  <script src="pick-npc.js?v=p1-looks"></script>
+  <script src="app.js?v=p1-looks"></script>
 </body>
 </html>

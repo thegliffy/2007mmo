@@ -99,11 +99,20 @@ html, body {
   padding: 3px;
 }
 #stage { display: block; image-rendering: pixelated; background: #3d5a28; cursor: crosshair; width: 100%; height: auto; }
+#crumbs {
+  color: #e6c15a;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 8px 4px 0;
+  margin: 0;
+  text-shadow: 1px 1px 0 #1a1008;
+  letter-spacing: 0.2px;
+}
 #hint {
   color: #f3e2c7;
   font-size: 12px;
   line-height: 1.4;
-  padding: 7px 4px 2px;
+  padding: 5px 4px 2px;
   text-shadow: 1px 1px 0 #1a1008;
 }
 
@@ -396,6 +405,73 @@ button.link:hover { color: var(--ink); }
   font: 14px Georgia, serif;
 }
 #form-password button[type="submit"] { margin-top: 10px; font-size: 14px; padding: 7px; }
+
+/* ---- appearance creator ---- */
+.looksscroll { width: 640px; max-width: 94vw; }
+.looks-desk {
+  display: flex;
+  gap: 22px;
+  margin-top: 16px;
+  align-items: stretch;
+}
+.looks-preview-wrap {
+  flex: 0 0 180px;
+  text-align: center;
+}
+#looks-preview {
+  display: block;
+  width: 180px;
+  height: 220px;
+  background:
+    repeating-linear-gradient(180deg, #d8c49a 0 2px, #e8d4b0 2px 8px);
+  border: 3px solid #6b4423;
+  box-shadow: inset 2px 2px 0 #fbf3e0, 3px 4px 0 #1a1008;
+  image-rendering: pixelated;
+}
+.looks-axes { flex: 1; min-width: 0; }
+.looks-axis { margin: 0 0 12px; padding: 0; border: none; }
+.looks-axis legend {
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8a6238;
+  padding: 0 0 4px;
+}
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 3px solid #6b4423;
+  background: #fff8e8;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 #fbf3e0;
+}
+.swatch.on, .stylepick.on {
+  outline: 2px solid #e0b355;
+  outline-offset: 1px;
+  border-color: #3d2412;
+}
+.stylepick {
+  padding: 5px 9px;
+  border: 2px solid #6b4423;
+  background: #fff8e8;
+  font: 13px Georgia, serif;
+  color: var(--ink);
+  cursor: pointer;
+}
+#do-looks { width: 100%; padding: 11px; font-size: 17px; margin-top: 8px; }
+.crumbs {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #6b4423;
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .looks-desk { flex-direction: column; align-items: center; }
+  .looks-axes { width: 100%; }
+}
 
 @media (max-width: 980px) {
   #desk { flex-direction: column; }

@@ -35,6 +35,7 @@ const (
 	cmdSell
 	cmdChat
 	cmdLeave
+	cmdLooks
 )
 
 type cmd struct {
@@ -44,6 +45,7 @@ type cmd struct {
 	x, y     int
 	id       string
 	text     string
+	looks    protocol.Looks
 }
 
 // Client is one authenticated WebSocket. Every identity field is set
@@ -243,6 +245,8 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 		h.broadcastJSON(protocol.Chat{T: protocol.MsgSaid, From: from, Text: text, Kind: "say"})
 	case cmdLeave:
 		h.onLeave(ctx, c.playerID, c.client)
+	case cmdLooks:
+		h.World.SetLooks(c.playerID, c.looks)
 	}
 }
 
@@ -311,16 +315,17 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		h.metrics.AddReconnect()
 	}
 	h.sendJSON(cl, protocol.Welcome{
-		T:        protocol.MsgWelcome,
-		Handle:   handle,
-		Username: p.Name,
-		TickMs:   int(h.Tick / time.Millisecond),
-		World:    protocol.WorldName,
-		Map:      h.World.MapInfo(),
-		Nodes:    h.World.AllNodes(),
-		You:      h.World.Snapshot(p.ID).You,
-		Items:    protocol.Catalog(),
-		Skills:   protocol.SkillCatalog(),
+		T:            protocol.MsgWelcome,
+		Handle:       handle,
+		Username:     p.Name,
+		TickMs:       int(h.Tick / time.Millisecond),
+		World:        protocol.WorldName,
+		Map:          h.World.MapInfo(),
+		Nodes:        h.World.AllNodes(),
+		You:          h.World.Snapshot(p.ID).You,
+		Items:        protocol.Catalog(),
+		Skills:       protocol.SkillCatalog(),
+		LooksCatalog: protocol.AppearanceCatalog(),
 	})
 	h.sendJSON(cl, h.World.Snapshot(p.ID))
 }
