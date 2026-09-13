@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thegliffy/2007mmo/internal/auth"
 	"github.com/thegliffy/2007mmo/internal/hub"
 	"github.com/thegliffy/2007mmo/internal/protocol"
 	"github.com/thegliffy/2007mmo/internal/store"
@@ -60,14 +61,13 @@ func main() {
 	}
 	w.RestoreNodes(existing)
 
-	h := hub.New(w, pg, rd, time.Duration(tickMs)*time.Millisecond)
+	authSvc := auth.NewService(pg, rd)
+
+	h := hub.New(w, pg, rd, authSvc, time.Duration(tickMs)*time.Millisecond)
 	go h.Run(ctx)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", h.ServeWS)
-	mux.HandleFunc("/health", h.ServeHealth)
-	mux.HandleFunc("/stats", h.ServeStats)
-	mux.HandleFunc("/metrics", h.ServeMetrics)
+	h.Routes(mux)
 	mux.Handle("/", noStoreClient(http.FileServer(http.Dir(webDir))))
 
 	srv := &http.Server{Addr: httpAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

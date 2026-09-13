@@ -18,6 +18,9 @@ type PlayerRec struct {
 	X, Y   int
 	Inv    []ItemStack
 	Skills map[string]SkillState
+	// HP is nil for rows written before health was persisted, and for a
+	// freshly minted character. Nil means "start at full".
+	HP *int
 }
 
 type NodeRec struct {
@@ -34,7 +37,8 @@ func recFromPlayer(p *Player) *PlayerRec {
 	for k, v := range p.Skills {
 		sk[k] = v
 	}
-	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Inv: inv, Skills: sk}
+	hp := p.HP
+	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Inv: inv, Skills: sk, HP: &hp}
 }
 
 func recFromNode(n *Node) *NodeRec {

@@ -77,6 +77,11 @@ type limits struct {
 	conn  *keyedLimiter
 	ws    *keyedLimiter
 	chat  *keyedLimiter
+	// login is per source address and loginUser is per account name, so
+	// neither one IP nor one distributed spray at a single account gets
+	// unlimited password guesses.
+	login     *keyedLimiter
+	loginUser *keyedLimiter
 }
 
 func limitsFromEnv() *limits {
@@ -85,6 +90,11 @@ func limitsFromEnv() *limits {
 		conn:  newKeyedLimiter(envFloat("HOLLOWMERE_LIMIT_CONN_RATE", 20), envFloat("HOLLOWMERE_LIMIT_CONN_BURST", 80)),
 		ws:    newKeyedLimiter(envFloat("HOLLOWMERE_LIMIT_WS_RATE", 20), envFloat("HOLLOWMERE_LIMIT_WS_BURST", 32)),
 		chat:  newKeyedLimiter(envFloat("HOLLOWMERE_LIMIT_CHAT_RATE", 0.8), envFloat("HOLLOWMERE_LIMIT_CHAT_BURST", 4)),
+		login: newKeyedLimiter(envFloat("HOLLOWMERE_LIMIT_LOGIN_RATE", 0.2), envFloat("HOLLOWMERE_LIMIT_LOGIN_BURST", 8)),
+		loginUser: newKeyedLimiter(
+			envFloat("HOLLOWMERE_LIMIT_LOGIN_USER_RATE", 0.1),
+			envFloat("HOLLOWMERE_LIMIT_LOGIN_USER_BURST", 6),
+		),
 	}
 }
 

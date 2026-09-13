@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -16,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/thegliffy/2007mmo/internal/protocol"
@@ -27,6 +28,7 @@ func main() {
 	addr := flag.String("addr", "ws://127.0.0.1:8080/ws", "world websocket URL")
 	statsURL := flag.String("stats", "http://127.0.0.1:8080/stats", "world /stats URL")
 	hotspot := flag.Bool("hotspot", false, "crowd bots onto the berry thicket")
+	password := flag.String("password", "bramble-hollow-load-9", "password for the generated bot accounts")
 	duration := flag.Duration("duration", 45*time.Second, "how long to run")
 	flag.Parse()
 
@@ -36,7 +38,7 @@ func main() {
 	ctxDone := make(chan os.Signal, 1)
 	signal.Notify(ctxDone, os.Interrupt, syscall.SIGTERM)
 
-	var connected, drops, msgs atomic.Int64
+	var connected, drops, msgs, authFails, throttled atomic.Int64
 	var rttNanos atomic.Int64
 	var rttN atomic.Int64
 
@@ -46,7 +48,8 @@ func main() {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			runBot(i, *addr, *hotspot, stop, &connected, &drops, &msgs, &rttNanos, &rttN)
+			runBot(i, *addr, *statsURL, *password, *hotspot, stop,
+				&connected, &drops, &msgs, &authFails, &throttled, &rttNanos, &rttN)
 		}(i)
 		time.Sleep(8 * time.Millisecond)
 	}
@@ -66,8 +69,8 @@ func main() {
 		if rttN.Load() > 0 {
 			avgRTT = time.Duration(rttNanos.Load() / rttN.Load())
 		}
-		fmt.Printf("%s bots=%d/%d drops=%d msgs=%d rtt=%s | world tick=%d p50=%.2fms p99=%.2fms ws=%d\n",
-			tag, connected.Load(), *n, drops.Load(), msgs.Load(), avgRTT,
+		fmt.Printf("%s bots=%d/%d drops=%d authfail=%d throttled=%d msgs=%d rtt=%s | world tick=%d p50=%.2fms p99=%.2fms ws=%d\n",
+			tag, connected.Load(), *n, drops.Load(), authFails.Load(), throttled.Load(), msgs.Load(), avgRTT,
 			st.Tick, st.TickP50Ms, st.TickP99Ms, st.WS)
 	}
 
@@ -85,6 +88,17 @@ func main() {
 	close(stop)
 	wg.Wait()
 	printSnap("done")
+	if throttled.Load() > 0 {
+		fmt.Printf("\n%d bots never got a welcome: the per-IP hello budget ran out.\n"+
+			"  Every bot shares one address, so raise HOLLOWMERE_LIMIT_HELLO_RATE / _BURST\n"+
+			"  for load runs (compose does). This is a harness limit, not a world failure.\n",
+			throttled.Load())
+	}
+	if authFails.Load() > 0 {
+		fmt.Printf("\n%d bots could not log in. Load runs need a generous login budget:\n"+
+			"  HOLLOWMERE_LIMIT_LOGIN_RATE / _BURST on the world service (compose sets these).\n"+
+			"  The live values in docs/ops.md are deliberately far tighter.\n", authFails.Load())
+	}
 	if st := lastStats(*statsURL); st.TickP99Ms > 0 {
 		if st.TickP99Ms < 50 {
 			fmt.Println("gate T1-ish: tick p99 < 50ms  PASS (check empty-world separately)")
@@ -108,9 +122,21 @@ func lastStats(url string) protocol.Stats {
 	return st
 }
 
-func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, drops, msgs, rttNanos, rttN *atomic.Int64) {
+func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan struct{},
+	connected, drops, msgs, authFails, throttled, rttNanos, rttN *atomic.Int64) {
+
+	// The world only upgrades authenticated sockets, so each bot needs a
+	// real account and a real session cookie before it can dial.
+	cookie, err := botSession(statsURL, fmt.Sprintf("bot%03d", i), password)
+	if err != nil {
+		authFails.Add(1)
+		return
+	}
+
 	dialer := websocket.Dialer{HandshakeTimeout: 8 * time.Second}
-	conn, _, err := dialer.Dial(addr, nil)
+	hdr := http.Header{}
+	hdr.Set("Cookie", cookie)
+	conn, _, err := dialer.Dial(addr, hdr)
 	if err != nil {
 		drops.Add(1)
 		return
@@ -119,16 +145,17 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 	connected.Add(1)
 	defer connected.Add(-1)
 
-	id := uuid.NewString()
-	hello, _ := json.Marshal(protocol.In{T: protocol.MsgHello, PlayerID: id, Name: fmt.Sprintf("Bot%03d", i)})
+	hello, _ := json.Marshal(protocol.In{T: protocol.MsgHello})
 	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
 		drops.Add(1)
 		return
 	}
 
+	var mu sync.Mutex
 	var youX, youY int
 	nodes := []protocol.NodeView{}
 	inWorld := make(chan struct{}, 1)
+	refused := make(chan struct{}, 1)
 
 	go func() {
 		for {
@@ -147,11 +174,22 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 				var st protocol.State
 				if peek.T == protocol.MsgState {
 					_ = json.Unmarshal(data, &st)
+					mu.Lock()
 					youX, youY = st.You.X, st.You.Y
 					nodes = st.Nodes
+					mu.Unlock()
 				}
 				select {
 				case inWorld <- struct{}{}:
+				default:
+				}
+			}
+			// The world refuses a join when the per-IP hello budget is
+			// spent. Every bot shares one address, so a big run hits that
+			// routinely; tell the main loop to ask again.
+			if peek.T == protocol.MsgErr {
+				select {
+				case refused <- struct{}{}:
 				default:
 				}
 			}
@@ -168,12 +206,37 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 		}
 	}()
 
-	select {
-	case <-inWorld:
-	case <-time.After(8 * time.Second):
-		drops.Add(1)
-		return
-	case <-stop:
+	joined := false
+	for attempt := 0; attempt < 8 && !joined; attempt++ {
+		if attempt > 0 {
+			// Back off, then ask again. Jittered so 200 bots do not all
+			// retry on the same beat.
+			wait := time.Duration(300*(attempt+1))*time.Millisecond +
+				time.Duration(rand.Intn(400))*time.Millisecond
+			select {
+			case <-time.After(wait):
+			case <-stop:
+				return
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
+				drops.Add(1)
+				return
+			}
+		}
+		select {
+		case <-inWorld:
+			joined = true
+		case <-refused:
+			// Throttled; loop around and retry.
+		case <-time.After(8 * time.Second):
+			drops.Add(1)
+			return
+		case <-stop:
+			return
+		}
+	}
+	if !joined {
+		throttled.Add(1)
 		return
 	}
 
@@ -198,7 +261,10 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 				_ = conn.WriteMessage(websocket.TextMessage, chat)
 			}
 			if hotspot {
-				tx, ty, nid := bushHotspot(nodes)
+				mu.Lock()
+				localNodes := nodes
+				mu.Unlock()
+				tx, ty, nid := bushHotspot(localNodes)
 				if nid != "" && rng.Intn(3) == 0 {
 					b, _ := json.Marshal(protocol.In{T: protocol.MsgInteract, ID: nid})
 					if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
@@ -210,15 +276,22 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 				if tx == 0 && ty == 0 {
 					tx, ty = 18, 3
 				}
-				b, _ := json.Marshal(protocol.In{T: protocol.MsgMove, X: clamp(tx+rng.Intn(3)-1, 1, 22), Y: clamp(ty+rng.Intn(3)-1, 1, 14)})
+				b, _ := json.Marshal(protocol.In{
+					T: protocol.MsgMove,
+					X: clamp(tx+rng.Intn(3)-1, 1, mapMaxX),
+					Y: clamp(ty+rng.Intn(3)-1, 1, mapMaxY),
+				})
 				if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
 					drops.Add(1)
 					return
 				}
 				continue
 			}
-			x := clamp(youX+rng.Intn(7)-3, 1, 22)
-			y := clamp(youY+rng.Intn(7)-3, 1, 14)
+			mu.Lock()
+			cx, cy := youX, youY
+			mu.Unlock()
+			x := clamp(cx+rng.Intn(7)-3, 1, mapMaxX)
+			y := clamp(cy+rng.Intn(7)-3, 1, mapMaxY)
 			b, _ := json.Marshal(protocol.In{T: protocol.MsgMove, X: x, Y: y})
 			if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
 				drops.Add(1)
@@ -227,6 +300,96 @@ func runBot(i int, addr string, hotspot bool, stop <-chan struct{}, connected, d
 		}
 	}
 }
+
+// botSession registers (or logs in) a bot account and returns the
+// "name=value" session cookie to present on the WebSocket upgrade.
+//
+// Go's cookiejar refuses ws:// URLs, so the token is carried by hand
+// rather than through a jar.
+func botSession(statsURL, username, password string) (string, error) {
+	base, err := url.Parse(statsURL)
+	if err != nil {
+		return "", err
+	}
+	body, err := json.Marshal(protocol.AuthRequest{Username: username, Password: password})
+	if err != nil {
+		return "", err
+	}
+
+	post := func(path string) (*http.Response, error) {
+		u := *base
+		u.Path = path
+		u.RawQuery = ""
+		req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return http.DefaultClient.Do(req)
+	}
+
+	// Register first; a second run of the harness reuses the account.
+	for attempt := 0; attempt < 6; attempt++ {
+		resp, err := post("/auth/register")
+		if err != nil {
+			return "", err
+		}
+		if c := sessionCookie(resp); c != "" {
+			_ = resp.Body.Close()
+			return c, nil
+		}
+		code := resp.StatusCode
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+
+		if code == http.StatusConflict {
+			break // already exists: log in below
+		}
+		if code == http.StatusTooManyRequests {
+			time.Sleep(time.Duration(400*(attempt+1)) * time.Millisecond)
+			continue
+		}
+		return "", fmt.Errorf("register %s: status %d", username, code)
+	}
+
+	for attempt := 0; attempt < 6; attempt++ {
+		resp, err := post("/auth/login")
+		if err != nil {
+			return "", err
+		}
+		if c := sessionCookie(resp); c != "" {
+			_ = resp.Body.Close()
+			return c, nil
+		}
+		code := resp.StatusCode
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if code == http.StatusTooManyRequests {
+			time.Sleep(time.Duration(400*(attempt+1)) * time.Millisecond)
+			continue
+		}
+		return "", fmt.Errorf("login %s: status %d", username, code)
+	}
+	return "", fmt.Errorf("login %s: throttled out", username)
+}
+
+func sessionCookie(resp *http.Response) string {
+	for _, c := range resp.Cookies() {
+		if c.Name == protocol.SessionCookie && c.Value != "" {
+			return c.Name + "=" + c.Value
+		}
+	}
+	return ""
+}
+
+// The bots roam the hamlet only. mapMaxX/mapMaxY stop short of the
+// southern woods on purpose: this harness measures a crowd on the gather
+// loop, and wandering into combat would make the tick numbers mean two
+// different things at once.
+const (
+	mapMaxX = 26
+	mapMaxY = 18
+)
 
 func bushHotspot(nodes []protocol.NodeView) (x, y int, id string) {
 	for _, n := range nodes {

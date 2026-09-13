@@ -51,6 +51,27 @@
               <li>Walk <em>south</em> into the briar-woods and click <em>near</em> a <em>Thornkin</em></li>
             </ol>
           </section>
+          <section class="panel">
+            <h2>Account <span class="sub" id="acct-name"></span></h2>
+            <div id="acct-actions">
+              <button id="show-pw" type="button" class="link">Change password</button>
+              <button id="do-logout" type="button" class="link">Log out</button>
+            </div>
+            <form id="form-password" class="authform hidden">
+              <label>Current password
+                <input id="pw-current" type="password" maxlength="128" autocomplete="current-password" />
+              </label>
+              <label>New password
+                <input id="pw-next" type="password" maxlength="128" autocomplete="new-password" />
+              </label>
+              <label>New password again
+                <input id="pw-next2" type="password" maxlength="128" autocomplete="new-password" />
+              </label>
+              <button type="submit">Change it</button>
+              <button id="cancel-pw" type="button" class="link">Never mind</button>
+            </form>
+            <p id="acct-msg" class="authmsg" role="status" aria-live="polite"></p>
+          </section>
           <section class="panel slim">
             <p class="credit">by <strong>thegliffy</strong></p>
             <p class="credit muted">original Hollowmere · woodland life, not a studio clone</p>
@@ -72,16 +93,48 @@
     <div class="scroll">
       <p class="seal">Hollowmere</p>
       <h1>Cross the stile</h1>
-      <p class="tag">Leave a name the villagers will remember.</p>
-      <label>Display name
-        <input id="name" maxlength="16" placeholder="Wanderer" />
-      </label>
-      <button id="enter" type="button">Enter Hollowmere</button>
-      <p class="fine">The gate is a stub. Your name and id stay in this browser so the pack persists after you close the tab.</p>
+      <p class="tag">The hamlet keeps your pack under your own name.</p>
+
+      <div class="tabs" role="tablist">
+        <button id="tab-login" class="tab on" type="button" role="tab" aria-selected="true">Log in</button>
+        <button id="tab-register" class="tab" type="button" role="tab" aria-selected="false">New here</button>
+      </div>
+
+      <form id="form-login" class="authform" autocomplete="on">
+        <label>Name
+          <input id="login-user" name="username" maxlength="16" autocomplete="username"
+                 autocapitalize="off" spellcheck="false" placeholder="your name" />
+        </label>
+        <label>Password
+          <input id="login-pass" name="password" type="password" maxlength="128"
+                 autocomplete="current-password" placeholder="your password" />
+        </label>
+        <button id="do-login" type="submit">Enter Hollowmere</button>
+      </form>
+
+      <form id="form-register" class="authform hidden" autocomplete="on">
+        <label>Name
+          <input id="reg-user" name="username" maxlength="16" autocomplete="username"
+                 autocapitalize="off" spellcheck="false" placeholder="3–16 letters, digits, _ or -" />
+        </label>
+        <label>Password
+          <input id="reg-pass" name="password" type="password" maxlength="128"
+                 autocomplete="new-password" placeholder="at least 10 characters" />
+        </label>
+        <label>Password again
+          <input id="reg-pass2" name="password2" type="password" maxlength="128"
+                 autocomplete="new-password" placeholder="the same again" />
+        </label>
+        <button id="do-register" type="submit">Claim a name</button>
+      </form>
+
+      <p id="auth-msg" class="authmsg" role="status" aria-live="polite"></p>
+      <p class="fine">Your password is stored only as a scrypt hash. The session lives in an
+        HttpOnly cookie, so no script on this page can read or forward it.</p>
     </div>
   </div>
 
-  <script src="pick-npc.js?v=click-near-2"></script>
-  <script src="app.js?v=click-near-2"></script>
+  <script src="pick-npc.js?v=auth-1"></script>
+  <script src="app.js?v=auth-1"></script>
 </body>
 </html>

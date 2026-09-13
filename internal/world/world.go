@@ -2,6 +2,9 @@ package world
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -100,6 +103,10 @@ type World struct {
 	TickN   uint64
 	LastMs  float64
 	notes   map[string]string
+	// handles maps a real player id to the opaque per-session handle that
+	// peers are allowed to see. Rotated on every join so a handle cannot
+	// be used to follow someone across sessions.
+	handles map[string]string
 }
 
 func New(store Store) *World {
@@ -115,6 +122,7 @@ func New(store Store) *World {
 		Nodes:   make(map[string]*Node),
 		Store:   store,
 		notes:   make(map[string]string),
+		handles: make(map[string]string),
 	}
 	for _, n := range seedNodes() {
 		world.Nodes[n.ID] = n
@@ -168,6 +176,12 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 	}
 	ensureSkill(rec.Skills, protocol.SkillForage)
 	ensureSkill(rec.Skills, protocol.SkillCook)
+	// Health survives a logout. Without this, disconnecting mid-fight was
+	// a free full heal while the beast kept its wounds.
+	hp := playerMaxHP
+	if rec.HP != nil && *rec.HP > 0 && *rec.HP <= playerMaxHP {
+		hp = *rec.HP
+	}
 	p := &Player{
 		ID:     rec.ID,
 		Name:   SanitizeName(rec.Name),
@@ -175,7 +189,7 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		Y:      rec.Y,
 		Inv:    append([]ItemStack(nil), rec.Inv...),
 		Skills: rec.Skills,
-		HP:     playerMaxHP,
+		HP:     hp,
 		MaxHP:  playerMaxHP,
 		Online: online,
 	}
@@ -187,11 +201,13 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 }
 
 func NewPlayerRec(id, name string) *PlayerRec {
+	full := playerMaxHP
 	return &PlayerRec{
 		ID:   id,
 		Name: SanitizeName(name),
 		X:    spawnX,
 		Y:    spawnY,
+		HP:   &full,
 		Inv:  nil,
 		Skills: map[string]SkillState{
 			protocol.SkillForage: {Lv: 1},
@@ -204,6 +220,39 @@ func (w *World) SetOnline(id string, on bool) {
 	if p := w.Players[id]; p != nil {
 		p.Online = on
 	}
+	if !on {
+		delete(w.handles, id)
+	}
+}
+
+// RotateHandle mints a fresh peer-visible handle for a player and returns
+// it. Called on join, so the handle a peer saw last session is useless.
+func (w *World) RotateHandle(id string) string {
+	if w.handles == nil {
+		w.handles = make(map[string]string)
+	}
+	h := newHandle()
+	w.handles[id] = h
+	return h
+}
+
+// HandleFor returns the peer-visible handle for a player, minting one if
+// the player is somehow live without a handle.
+func (w *World) HandleFor(id string) string {
+	if h := w.handles[id]; h != "" {
+		return h
+	}
+	return w.RotateHandle(id)
+}
+
+// newHandle is 96 bits of randomness: unguessable, but carries no
+// meaning and grants nothing on its own.
+func newHandle() string {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		panic("world: crypto/rand unavailable: " + err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 func (w *World) SetDest(id string, x, y int) {
@@ -287,7 +336,7 @@ func sanitizeChat(s string) string {
 // before memory is updated so a killed container cannot duplicate loot.
 func (w *World) Tick(ctx context.Context) {
 	w.TickN++
-	w.tickNodes()
+	w.tickNodes(ctx)
 	w.tickNPCs()
 
 	ids := make([]string, 0, len(w.Players))
@@ -296,7 +345,7 @@ func (w *World) Tick(ctx context.Context) {
 			ids = append(ids, id)
 		}
 	}
-	sortStrings(ids)
+	sort.Strings(ids)
 
 	for _, id := range ids {
 		p := w.Players[id]
@@ -311,7 +360,10 @@ func (w *World) Tick(ctx context.Context) {
 	}
 }
 
-func (w *World) tickNodes() {
+// tickNodes runs inside the authoritative step, so its store write is
+// bounded: a stalled Postgres must degrade into a skipped node refresh,
+// never into a frozen world.
+func (w *World) tickNodes(ctx context.Context) {
 	for _, n := range w.Nodes {
 		if !gathers(n.Kind) {
 			continue
@@ -321,7 +373,7 @@ func (w *World) tickNodes() {
 			if n.Cooldown == 0 && n.Remaining == 0 {
 				n.Remaining = n.Max
 				if w.Store != nil {
-					_ = w.Store.UpsertNode(context.Background(), *recFromNode(n))
+					_ = w.Store.UpsertNode(ctx, *recFromNode(n))
 				}
 			}
 		}
@@ -574,6 +626,7 @@ func (w *World) commitUse(ctx context.Context, p *Player, itemID, flavor string)
 	p.Dirty = false
 	if healed := applyHeal(p, foodHeal(itemID)); healed > 0 {
 		flavor = flavor + " Strength returns."
+		p.Dirty = true
 	}
 	return flavor, true
 }
@@ -606,7 +659,7 @@ func (w *World) PersistPlayer(ctx context.Context, id string) {
 func (w *World) Snapshot(id string) protocol.State {
 	you := protocol.YouView{}
 	if p := w.Players[id]; p != nil {
-		you = youView(p)
+		you = w.youView(p)
 	}
 	players := make([]protocol.PlayerView, 0, len(w.Players))
 	online := 0
@@ -619,7 +672,7 @@ func (w *World) Snapshot(id string) protocol.State {
 			continue
 		}
 		players = append(players, protocol.PlayerView{
-			ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
+			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
 		})
 	}
 	npcs := make([]protocol.NPCView, 0, len(w.NPCs))
@@ -669,7 +722,7 @@ func (w *World) OnlineCount() int {
 	return n
 }
 
-func youView(p *Player) protocol.YouView {
+func (w *World) youView(p *Player) protocol.YouView {
 	inv := make([]protocol.Item, 0, len(p.Inv))
 	for _, it := range p.Inv {
 		inv = append(inv, protocol.Item{ID: it.ID, N: it.N})
@@ -679,7 +732,7 @@ func youView(p *Player) protocol.YouView {
 		sk[k] = protocol.Skill{XP: v.XP, Lv: v.Lv}
 	}
 	return protocol.YouView{
-		PlayerView: protocol.PlayerView{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Action: p.Action},
+		PlayerView: protocol.PlayerView{ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action},
 		Inv:        inv,
 		Skills:     sk,
 		HP:         p.HP,
@@ -767,8 +820,12 @@ func addItem(inv []ItemStack, id string, n int) []ItemStack {
 	return append(inv, ItemStack{ID: id, N: n})
 }
 
+// removeItem returns a new slice. It used to filter in place through
+// inv[:0], which was safe only because every caller happened to pass a
+// fresh copy — a nasty thing to rely on when this is the code path where
+// aliasing would mean duplicated items.
 func removeItem(inv []ItemStack, id string, n int) []ItemStack {
-	out := inv[:0]
+	out := make([]ItemStack, 0, len(inv))
 	for _, it := range inv {
 		if it.ID == id {
 			it.N -= n
@@ -786,14 +843,4 @@ func cancelAction(p *Player) {
 	p.ActionTicks = 0
 	p.ActionNode = ""
 	p.ActionItem = ""
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		j := i
-		for j > 0 && s[j] < s[j-1] {
-			s[j], s[j-1] = s[j-1], s[j]
-			j--
-		}
-	}
 }

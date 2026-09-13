@@ -38,16 +38,68 @@ func (r *Redis) Ping(ctx context.Context) error {
 	return r.c.Ping(ctx).Err()
 }
 
-func (r *Redis) SetSession(ctx context.Context, token, playerID string, ttl time.Duration) error {
-	return r.c.Set(ctx, "session:"+token, playerID, ttl).Err()
+// Login sessions. A token maps to an account id; each account also keeps
+// a set of its live tokens so a password change can revoke the others.
+//
+// Redis is authoritative for sessions and holds no password material.
+// Losing Redis logs everyone out; it never grants access.
+
+func sessionKey(token string) string { return "session:" + token }
+
+func accountSessionsKey(accountID string) string { return "acct-sessions:" + accountID }
+
+func (r *Redis) CreateSession(ctx context.Context, token, accountID string, ttl time.Duration) error {
+	pipe := r.c.TxPipeline()
+	pipe.Set(ctx, sessionKey(token), accountID, ttl)
+	pipe.SAdd(ctx, accountSessionsKey(accountID), token)
+	// The index outlives any single token so it can still be cleaned up.
+	pipe.Expire(ctx, accountSessionsKey(accountID), ttl*2)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
-func (r *Redis) GetSession(ctx context.Context, token string) (string, error) {
-	s, err := r.c.Get(ctx, "session:"+token).Result()
+func (r *Redis) SessionAccount(ctx context.Context, token string) (string, error) {
+	s, err := r.c.Get(ctx, sessionKey(token)).Result()
 	if err == redis.Nil {
 		return "", nil
 	}
 	return s, err
+}
+
+func (r *Redis) TouchSession(ctx context.Context, token string, ttl time.Duration) error {
+	return r.c.Expire(ctx, sessionKey(token), ttl).Err()
+}
+
+func (r *Redis) DeleteSession(ctx context.Context, token string) error {
+	accountID, err := r.SessionAccount(ctx, token)
+	if err == nil && accountID != "" {
+		_ = r.c.SRem(ctx, accountSessionsKey(accountID), token).Err()
+	}
+	return r.c.Del(ctx, sessionKey(token)).Err()
+}
+
+// DeleteAccountSessions drops every session for an account except keep.
+func (r *Redis) DeleteAccountSessions(ctx context.Context, accountID, keep string) error {
+	tokens, err := r.c.SMembers(ctx, accountSessionsKey(accountID)).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	pipe := r.c.TxPipeline()
+	for _, t := range tokens {
+		if t == keep {
+			continue
+		}
+		pipe.Del(ctx, sessionKey(t))
+		pipe.SRem(ctx, accountSessionsKey(accountID), t)
+	}
+	if keep == "" {
+		pipe.Del(ctx, accountSessionsKey(accountID))
+	}
+	_, err = pipe.Exec(ctx)
+	if err == redis.Nil {
+		return nil
+	}
+	return err
 }
 
 func (r *Redis) SetPresence(ctx context.Context, playerID string) error {

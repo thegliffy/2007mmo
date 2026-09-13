@@ -4,18 +4,19 @@ import asyncio
 import json
 import os
 import sys
-import uuid
 
-import websockets
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hollow_auth
 
 URL = os.environ.get("WS_URL", "ws://127.0.0.1:8080/ws")
-PID = os.environ.get("PLAYER_ID") or str(uuid.uuid4())
+# The account name is now the identity that survives a restart: run this
+# twice with the same NAME to prove the pack persisted across a crash.
 NAME = os.environ.get("NAME", "KyleT3")
+PASSWORD = os.environ.get("PASSWORD", hollow_auth.DEFAULT_PASSWORD)
 
 
 async def main():
-    ws = await websockets.connect(URL)
-    await ws.send(json.dumps({"t": "hello", "playerId": PID, "name": NAME}))
+    ws, _ = await hollow_auth.join(URL, NAME, PASSWORD)
     you = None
     nodes = []
     for _ in range(8):
@@ -27,7 +28,7 @@ async def main():
                 break
     berries = sum(it["n"] for it in (you or {}).get("inv", []) if it["id"] == "berry")
     tarts = sum(it["n"] for it in (you or {}).get("inv", []) if it["id"] == "tart")
-    print(f"player={PID} berries={berries} tarts={tarts} action={you.get('action') if you else None}")
+    print(f"account={NAME} berries={berries} tarts={tarts} action={you.get('action') if you else None}")
     if os.environ.get("FORAGE") == "1":
         bush = next((n for n in nodes if n["kind"] == "bush" and n.get("ready")), None)
         if not bush:
@@ -45,7 +46,7 @@ async def main():
                 break
         print(f"after_forage berries={berries} inv={you.get('inv')}")
     await ws.close()
-    print("PLAYER_ID=" + PID)
+    print("NAME=" + NAME)
 
 
 if __name__ == "__main__":
