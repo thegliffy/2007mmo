@@ -1,8 +1,8 @@
-# Hollowmere ops (Phase 2 Week 1)
+# Hollowmere ops
 
 How Kyle runs the live Compose stack at **2007.gliffy.tv** without pretending we have Kubernetes.
 
-The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (packs and node remaining). Redis is session/presence only — you do not need a Redis dump to keep tarts.
+The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (accounts, packs, node remaining). Redis holds **login sessions** and presence — you do not need a Redis dump to keep tarts, but flushing Redis **logs everybody out**.
 
 All commands below assume you are in the git checkout that `docker compose` uses on that host (the same tree you would `git pull` into).
 
@@ -87,12 +87,69 @@ Or non-interactive:
 
 The script stops `world`, drops and recreates `hollowmere`, loads the dump, starts `world`, and waits for `/health`. After restore, villagers see the packs from dump time. In-flight mill/hearth channels are lost (same T3 rule as a crash: committed rows win; nothing is duplicated).
 
-## A4 — Metrics and rate limits
+## A4 — Accounts and sessions
+
+Players have **real accounts**: a name, a password, and an HttpOnly session cookie.
+
+| Endpoint | What |
+|----------|------|
+| `POST /auth/register` | `{"username","password"}` → 201, sets the session cookie |
+| `POST /auth/login` | `{"username","password"}` → 200, sets the session cookie |
+| `POST /auth/logout` | drops that session and closes its socket |
+| `GET /auth/me` | `{"username"}` or 401 |
+| `POST /auth/password` | `{"current","next"}` → rotates the password and signs out every other session |
+
+Facts worth knowing before an incident:
+
+- **Passwords** are stored only as scrypt hashes (`scrypt$N$r$p$salt$key`, N=16384, ~16 MiB per hash). The format carries its own parameters, so raising the cost later re-hashes each password on the owner's next login. There is no recovery path — no email on file means **a forgotten password cannot be reset**, only the row deleted.
+- **Sessions live in Redis** (`session:<token>`, plus `acct-sessions:<accountID>` for revocation), 7 days sliding. `redis-cli FLUSHALL` signs out the whole hamlet; it loses no packs.
+- **Concurrent hashing is capped** at 4, so a login flood costs ~64 MiB rather than one 16 MiB allocation per request.
+- **One account owns exactly one player row**, enforced by a unique index on `players.account_id`.
+- Player rows created before accounts existed keep `account_id IS NULL` and are simply unreachable. To see them: `SELECT id, name FROM players WHERE account_id IS NULL;`
+
+### Live settings that matter
+
+Put these in the `world` service `environment:` on the 2007.gliffy.tv compose file. **The defaults are wrong for a proxied host.**
+
+| Variable | Live value | Why |
+|----------|-----------|-----|
+| `HOLLOWMERE_TRUSTED_PROXIES` | Caddy's address or CIDR | Without it every player shares one rate-limit bucket and one failed-login budget, because every request arrives from Caddy. Only then is `X-Forwarded-For` believed. |
+| `HOLLOWMERE_ALLOWED_ORIGINS` | `2007.gliffy.tv` | Cross-site WebSocket upgrades and auth posts are refused unless the Origin matches this or the request Host. |
+| `HOLLOWMERE_SECURE_COOKIES` | `1` | Forces `Secure` on the session cookie. Otherwise it is set only when the world itself terminates TLS or Caddy sends `X-Forwarded-Proto: https`. |
+| `HOLLOWMERE_LIMIT_LOGIN_RATE` / `_BURST` | `0.2` / `8` | Per source address. Compose ships `60` / `400` so the 200-bot harness can sign in — **that is a load-test value, not a live one.** |
+| `HOLLOWMERE_LIMIT_LOGIN_USER_RATE` / `_BURST` | `0.1` / `6` | Per account name, so a spray from many addresses at one account is still capped. |
+
+Live TLS is Caddy on the host → `127.0.0.1:28080`. Find the bridge gateway the
+proxy reaches the world through, and re-check it after any `docker compose up`:
+
+```bash
+docker inspect 2007mmo-world-1 -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'
+```
+
+If it drifts from the compose value, update `HOLLOWMERE_TRUSTED_PROXIES` and
+recreate `world`. A stale value is not loud: logins keep working, but every
+player silently shares one throttle bucket and the cookie loses `Secure`.
+
+`X-Forwarded-For` is read **right to left**, skipping hops that are themselves
+trusted. Caddy appends the address it saw rather than replacing the header, so
+the leftmost entry is whatever the client sent — trusting it would let anyone
+pick the address their password guesses are counted against.
+
+### Deleting or renaming an account
+
+```bash
+docker compose exec postgres psql -U hollowmere -d hollowmere \
+  -c "DELETE FROM accounts WHERE username_key='someone';"
+```
+
+`players.account_id` is `ON DELETE CASCADE`, so that removes the character too. Take a dump first (A3).
+
+## A5 — Metrics and rate limits
 
 | URL | What |
 |-----|------|
 | `/health` | world + postgres + redis ping |
-| `/stats` | JSON: tick p50/p99, online, WS, joins, chats, actions, rate-limit counters |
+| `/stats` | JSON: tick/loop/lag p50/p99, online, WS, joins, chats, actions, dropped frames, rate-limit counters, auth counters |
 | `/metrics` | Prometheus text of the same numbers |
 
 ```bash
@@ -108,7 +165,36 @@ Rate limits (defaults are generous enough for local bots; tighten on the live ho
 | `HOLLOWMERE_LIMIT_CONN_RATE` / `_BURST` | 20 / 80 per IP | 5 / 15 |
 | `HOLLOWMERE_LIMIT_WS_RATE` / `_BURST` | 20 / 32 per client | 12 / 20 |
 | `HOLLOWMERE_LIMIT_CHAT_RATE` / `_BURST` | 0.8 / 4 (~8 lines / 10s) | 0.5 / 3 |
+| `HOLLOWMERE_LIMIT_LOGIN_RATE` / `_BURST` | 0.2 / 8 per IP (compose: 60 / 400) | 0.2 / 8 |
+| `HOLLOWMERE_LIMIT_LOGIN_USER_RATE` / `_BURST` | 0.1 / 6 per account name | 0.1 / 6 |
 
 Chat is also still one accepted line per 600ms tick. Auth (`hello`) and new WebSocket upgrades are limited per IP. Put the live values in the `world` service `environment:` on the 2007.gliffy.tv compose file (or an override file you do not commit if you prefer).
 
-Refused frames increment `limitedHello` / `limitedWS` / `limitedChat` / `limitedConn` on `/stats` and `hollowmere_rate_limited_total{kind=...}` on `/metrics`.
+Refused frames increment `limitedHello` / `limitedWS` / `limitedChat` / `limitedConn` / `limitedLogin` on `/stats` and `hollowmere_rate_limited_total{kind=...}` on `/metrics`.
+
+### Which latency number to watch
+
+Three are reported, and they fail differently:
+
+| Metric | Covers | Use it for |
+|--------|--------|-----------|
+| `tickP50Ms` / `tickP99Ms` | the authoritative step alone | is the simulation itself slow |
+| `loopP50Ms` / `loopP99Ms` | tick **plus** building and queueing a state frame for every client | the real per-cycle cost; this is the one that grows with player count |
+| `lagP50Ms` / `lagP99Ms` | how late each tick fired against its 600ms schedule | **is the world actually keeping up** |
+
+Gate on **lag**. Sustained lag near or above the tick interval means the world
+is falling behind regardless of what the other two say. `tick*` on its own
+excludes the fan-out, which is most of the cost at player counts that matter.
+
+`framesDropped` / `hollowmere_frames_dropped_total` counts state frames
+discarded because a client was not draining its socket. A slow client losing a
+frame is survivable — the next one is a full snapshot — but a climbing counter
+means clients are not keeping up, which no other metric shows.
+
+Two auth counters are worth an alert:
+
+| Counter | Means |
+|---------|-------|
+| `loginFails` / `hollowmere_login_failures_total` | Rejected credentials. Climbing on its own usually means people forgot passwords. |
+| `limitedLogin` / `hollowmere_rate_limited_total{kind="login"}` | Guesses refused by the throttle. Climbing means someone is working through a list. |
+| `unauthWS` / `hollowmere_unauthenticated_ws_total` | WebSocket upgrades refused for a missing or dead session. A steady trickle is normal (expired cookies); a spike is someone poking `/ws` directly. |

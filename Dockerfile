@@ -17,6 +17,14 @@ COPY client /app/web
 COPY migrations /app/migrations
 COPY deploy/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
+# Run as a normal user. The entrypoint generates a self-signed cert into
+# /certs, so that has to be writable before dropping privileges. Both
+# listen ports are above 1024, so nothing here needs root.
+RUN addgroup -S hollow && adduser -S -G hollow -h /app hollow \
+ && mkdir -p /certs \
+ && chown -R hollow:hollow /certs /app
+USER hollow
 ENV WEB_DIR=/app/web \
     HTTP_ADDR=:8080 \
     TLS_ADDR=:8443 \
