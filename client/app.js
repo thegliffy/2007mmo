@@ -729,6 +729,7 @@
       for (let x = 0; x < m.w; x++) {
         const g = row[x] || ".";
         const px = x * tw, py = y * th;
+        const scars = x >= 27;
         switch (g) {
           case "#":
             ctx.fillStyle = "#4a4035";
@@ -756,9 +757,9 @@
             ctx.stroke();
             break;
           case "P":
-            ctx.fillStyle = "#c2a36b";
+            ctx.fillStyle = scars ? "#8a7350" : "#c2a36b";
             ctx.fillRect(px, py, tw, th);
-            ctx.fillStyle = "#b08950";
+            ctx.fillStyle = scars ? "#6a5340" : "#b08950";
             ctx.fillRect(px + 4, py + 8, 3, 3);
             break;
           case "H":
@@ -780,7 +781,11 @@
             ctx.fillRect(px, py, tw, th);
             break;
           default:
-            ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
+            if (scars) {
+              ctx.fillStyle = (x + y) % 2 ? "#6e5a40" : "#5c4a34";
+            } else {
+              ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
+            }
             ctx.fillRect(px, py, tw, th);
         }
       }
@@ -853,18 +858,26 @@
           ctx.fillRect(px + tw * 0.55, py + th * 0.58, 3, 3);
         }
       } else if (n.kind === "kiln") {
-        ctx.fillStyle = "#4a3a30";
-        ctx.fillRect(px + tw * 0.18, py + th * 0.28, tw * 0.64, th * 0.58);
-        ctx.fillStyle = "#2a2018";
-        ctx.fillRect(px + tw * 0.32, py + th * 0.48, tw * 0.36, th * 0.28);
-        ctx.fillStyle = "rgba(255," + Math.floor(90 + 70 * flicker) + ",20,0.9)";
-        ctx.fillRect(px + tw * 0.38, py + th * 0.54, tw * 0.24, th * 0.16);
+        ctx.fillStyle = "#3a2a22";
+        ctx.fillRect(px + 2, py + th * 0.18, tw - 4, th * 0.72);
+        ctx.fillStyle = "#1a140e";
+        ctx.fillRect(px + tw * 0.28, py + th * 0.42, tw * 0.44, th * 0.36);
+        ctx.fillStyle = "rgba(255," + Math.floor(90 + 70 * flicker) + ",20,0.95)";
+        ctx.fillRect(px + tw * 0.34, py + th * 0.48, tw * 0.32, th * 0.22);
+        ctx.fillStyle = "#c4a36a";
+        ctx.font = Math.max(9, Math.floor(th * 0.28)) + "px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText("kiln", px + tw / 2, py + th * 0.16);
       } else if (n.kind === "anvil") {
-        ctx.fillStyle = "#3a3a3a";
-        ctx.fillRect(px + tw * 0.22, py + th * 0.42, tw * 0.56, th * 0.18);
-        ctx.fillRect(px + tw * 0.4, py + th * 0.58, tw * 0.2, th * 0.2);
-        ctx.fillStyle = "#6a6a6a";
-        ctx.fillRect(px + tw * 0.18, py + th * 0.36, tw * 0.64, th * 0.1);
+        ctx.fillStyle = "#2a2a2a";
+        ctx.fillRect(px + tw * 0.12, py + th * 0.38, tw * 0.76, th * 0.22);
+        ctx.fillRect(px + tw * 0.36, py + th * 0.56, tw * 0.28, th * 0.28);
+        ctx.fillStyle = "#8a8a8a";
+        ctx.fillRect(px + tw * 0.08, py + th * 0.3, tw * 0.84, th * 0.14);
+        ctx.fillStyle = "#c4a36a";
+        ctx.font = Math.max(9, Math.floor(th * 0.28)) + "px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText("anvil", px + tw / 2, py + th * 0.22);
       } else if (n.kind === "fire") {
         ctx.fillStyle = "#5a3a18";
         ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);
