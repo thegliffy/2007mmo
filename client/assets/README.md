@@ -1,54 +1,42 @@
-# Hollowmere art drop
+# Hollowmere production art pack
 
-Presentation only. The hamlet stays **top-down**; these files are drawn in the existing tile cells. Drop Art Director PNGs on these paths — same filenames — and they replace the placeholders. Missing files keep the canvas fallback.
+Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI separate), stylized 3D paperdoll, woodland skills, **¾ hamlet** sprites.
 
-## Anchors
+## Draw sizes (intended)
+| Kind | Size | Notes |
+|---|---|---|
+| Terrain tiles | **64×64** | Replace procedural fills; map advisory tileSize=32 — scale as needed |
+| Props / gather / buildings | **96×96** (house **192×192**) | Anchor at tile bottom-center |
+| Characters (NPC/hostile/player) | **64×96** | Feet near bottom; ¾ facing |
+| Paperdoll masks | **128×~192** | Tint in client or use pre-tinted `skin_*` / `tunic_*` / hair masks |
 
-| Kind | Placeholder size | How it is drawn |
-|------|------------------|-----------------|
-| Tiles | 64×32 | Stretched to fill the tile cell. |
-| Props / hostiles | 64×96 | Stand in the cell, feet toward the bottom. |
+## Map glyph → asset
+| Glyph / node | File |
+|---|---|
+| `.` grass | `terrain/grass.png` |
+| `P` path | `terrain/path.png` |
+| `~` water | `terrain/water.png` |
+| scars (x≥27) | `terrain/scar.png` |
+| `#` wall | `terrain/wall.png` |
+| `T` tree | `props/tree.png` (+ `props/stump.png` when spent) |
+| `H` house | `buildings/house.png` |
+| `*` hearth | `props/hearth.png` |
+| `M` mill | `props/millstone.png` |
+| `E` chest | `props/oak_chest.png` |
+| `K` kiln | `props/kiln.png` |
+| `A` anvil | `props/anvil.png` |
+| bush / `B` | `gather/bramble.png` |
+| hazel / `Z` | `gather/hazel.png` |
+| copper / `C` | `gather/ore_copper.png` |
+| tin / `N` | `gather/ore_tin.png` |
+| stile | `props/stile.png` |
+| pedlar | `props/pedlar_stall.png` |
+| Marta / Old Fen / Pip / Wend | `npcs/*.png` |
+| Thornkin / Brambleback | `hostiles/*.png` |
 
-No isometric engine. No paperdoll layer compositor. Players still use the existing appearance paperdoll (skin, hair, tunic colours).
+## Paperdoll axes (from protocol/looks.go)
+- skin: fair tan olive deep → `paperdoll/skin_*.png`
+- hair styles: cropped short tied long → `paperdoll/hair_*_mask.png` (+ hairColor tint)
+- top: moss clay ink cream berry → `paperdoll/tunic_*.png`
 
-## Tiles — `assets/tiles/`
-
-| File | Tile |
-|------|------|
-| `grass.png` | `.` hamlet grass (and under trees) |
-| `grass-scar.png` | `.` eastern scars |
-| `path.png` | `P` packed earth |
-| `path-scar.png` | `P` in the scars |
-| `water.png` | `~` |
-| `wall.png` | `#` |
-| `house.png` | `H` / `*` cottage floor |
-| `earth.png` | `C` `N` `K` `A` scar ground |
-
-## Props — `assets/props/`
-
-| File | What |
-|------|------|
-| `stile.png` | Wooden crossing at spawn (8, 8) — scenery, not a node |
-| `hearth.png` | Cottage hearth (`fire-1`) |
-| `fire.png` | Player campfire |
-| `mill.png` | Millstone |
-| `chest.png` | Oak chest |
-| `kiln.png` | Smelting kiln |
-| `anvil.png` | Forge anvil |
-| `bush.png` / `bush-spent.png` | Bramble, ready / picked |
-| `hazel.png` / `hazel-spent.png` | Hazel, ready / picked |
-| `tree.png` / `stump.png` | Tree vs spent |
-| `copper.png` / `tin.png` | Ore veins |
-
-## Hostiles — `assets/hostiles/`
-
-| File | Who |
-|------|-----|
-| `thornkin.png` | Thornkin |
-| `brambleback.png` | Brambleback |
-
-Villagers and players stay on the in-client paperdoll until Kyle asks for more.
-
-## Locked look
-
-Carved wood + parchment HUD. Woodland life-skills. Original Hollowmere IP — no borrowed studio chrome.
+See `manifest.json` for full file list. WebP twins sit beside PNGs where generated.
