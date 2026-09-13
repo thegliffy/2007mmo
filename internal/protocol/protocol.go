@@ -47,6 +47,12 @@ const (
 	ItemLog     = "log"
 	ItemPaper   = "paper"
 
+	// Tools. One to a slot, never stacked, and required for the work they
+	// are for rather than merely helpful at it.
+	ItemAxe   = "axe"
+	ItemFlint = "flint"
+	ItemSword = "sword"
+
 	SkillForage  = "forage"
 	SkillCook    = "cook"
 	SkillMelee   = "melee"
@@ -180,6 +186,14 @@ type TileMap struct {
 type ItemInfo struct {
 	Name  string `json:"name"`
 	Glyph string `json:"glyph"`
+	// Tool items take a slot each and never stack.
+	Tool bool `json:"tool,omitempty"`
+	// Verb is the work this tool makes possible: "chop", "light". The
+	// client uses it to know what a held tool can be pointed at.
+	Verb string `json:"verb,omitempty"`
+	// Attack counts as extra Melee levels; Damage is added flat on top.
+	Attack int `json:"attack,omitempty"`
+	Damage int `json:"damage,omitempty"`
 }
 
 type Welcome struct {
@@ -310,5 +324,26 @@ func Catalog() map[string]ItemInfo {
 		ItemLeather: {Name: "Goblin leather", Glyph: "Gl"},
 		ItemLog:     {Name: "Log", Glyph: "Lg"},
 		ItemPaper:   {Name: "Paper", Glyph: "Pa"},
+
+		ItemAxe:   {Name: "Woodsman's axe", Glyph: "Ax", Tool: true, Verb: "chop"},
+		ItemFlint: {Name: "Flint and steel", Glyph: "Fs", Tool: true, Verb: "light"},
+		ItemSword: {Name: "Briar sword", Glyph: "Sw", Tool: true, Attack: 4, Damage: 1},
 	}
+}
+
+// IsTool reports whether an item occupies a slot of its own.
+func IsTool(id string) bool {
+	info, ok := Catalog()[id]
+	return ok && info.Tool
+}
+
+// ToolFor returns the tool id that enables a verb ("chop", "light"), or
+// empty if the work needs no tool.
+func ToolFor(verb string) string {
+	for id, info := range Catalog() {
+		if info.Tool && info.Verb == verb {
+			return id
+		}
+	}
+	return ""
 }

@@ -45,6 +45,45 @@ Week 1 is still the woodland-life cut under the new map.
 
 **Camera:** still **top-down**. A ¾ view is a follow-up.
 
+### Tools and the pack
+
+The pack is a real inventory: **28 slots, drawn in the order the server holds
+them**. It used to be one fixed slot per item type in catalogue order, which
+left tools nowhere to sit and made two of a thing look like one.
+
+**Tools take a slot each and never stack.** Three axes are three axes, in three
+slots, so a pack of tools costs what it looks like it costs.
+
+| Tool | What it is for | She sells it for |
+|------|----------------|------------------|
+| Woodsman's axe | chopping trees | 12 |
+| Flint and steel | lighting a pile of logs | 8 |
+| Briar sword | +4 Melee levels and +1 damage | 60 |
+
+**Work that needs a tool now requires one.** No axe, no logs — the tree just
+says so. No flint, no fire. Foraging and cooking need nothing, which is what
+makes them the way in: pick a round of brambles, sell them to the pedlar, and
+the twelve coins buy your first axe.
+
+Carrying a tool is enough; there is no equip slot. The best blade in the pack
+counts toward your swing, so a sword works by being on you rather than by being
+worn.
+
+### Pointing a tool at something
+
+Click a tool in the pack to **take it in hand** — it lights up and the pack says
+what it is waiting for. The next click on the world says what to use it on:
+
+- flint and steel, then a pile of logs → a campfire
+- the axe, then a tree → a chop
+
+Clicking anywhere it does not apply simply puts the tool away. The plain clicks
+still work too (click a tree to chop, right-click a pile to light it), so the
+held-tool path is a way of being deliberate rather than the only way through.
+
+The server checks the tool independently of all this. Holding the flint is a
+convenience of the client; **having it is a rule of the world**.
+
 ### The pedlar
 
 **Wend the Pedlar** keeps to the path by the millstone. Click her to walk over

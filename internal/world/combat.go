@@ -190,7 +190,8 @@ func (w *World) tickCombat(ctx context.Context, p *Player) {
 
 	// You swing first. Landing the killing blow means taking nothing back,
 	// which is why a fight you can only just win is still worth having.
-	dealt := meleeDamage(skillLevel(p, protocol.SkillMelee))
+	atk, dmg := bestWeapon(p.Inv)
+	dealt := meleeDamage(skillLevel(p, protocol.SkillMelee)+atk) + dmg
 	if dealt > npc.HP {
 		dealt = npc.HP
 	}

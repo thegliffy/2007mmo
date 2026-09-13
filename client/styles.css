@@ -285,6 +285,27 @@ html, body {
   font-weight: bold;
 }
 
+/* 28 slots at four across is seven rows, which would push everything else
+   off the desk. Cap it and let the pack scroll. */
+#inv {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.slot.tool { border-color: #8a6238; box-shadow: inset 0 0 0 1px #d9b47c; }
+.slot.held {
+  outline: 2px solid #e0b355;
+  outline-offset: 1px;
+  background: #6b5330;
+}
+.heldhint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #d9b47c;
+  font-style: italic;
+}
+.heldhint.hidden { display: none; }
+
 /* ---- the pedlar ---- */
 .shopscroll { width: 560px; max-width: 92vw; }
 .shopcols { display: flex; gap: 18px; margin-top: 14px; }

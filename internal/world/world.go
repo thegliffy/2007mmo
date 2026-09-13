@@ -548,6 +548,11 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			return
 		}
 		if n.Kind == KindTree {
+			if !hasTool(p.Inv, "chop") {
+				w.note(p.ID, "You would need an axe for that.")
+				p.ActionNode = ""
+				return
+			}
 			p.Action = protocol.ActionChop
 			p.ActionTicks = chopTicks
 		} else {
@@ -978,15 +983,51 @@ func ensureSkill(m map[string]SkillState, id string) {
 }
 
 func countItem(inv []ItemStack, id string) int {
+	n := 0
 	for _, it := range inv {
 		if it.ID == id {
-			return it.N
+			n += it.N
 		}
 	}
-	return 0
+	return n
 }
 
+// hasTool reports whether the pack holds the tool a piece of work needs.
+// Carrying it is enough — there is no equip slot, so a tool in the pack is
+// a tool in the hand.
+func hasTool(inv []ItemStack, verb string) bool {
+	need := protocol.ToolFor(verb)
+	return need == "" || countItem(inv, need) > 0
+}
+
+// bestWeapon returns the attack and damage of the best blade in the pack.
+func bestWeapon(inv []ItemStack) (attack, damage int) {
+	cat := protocol.Catalog()
+	for _, it := range inv {
+		info, ok := cat[it.ID]
+		if !ok || !info.Tool {
+			continue
+		}
+		if info.Attack+info.Damage > attack+damage {
+			attack, damage = info.Attack, info.Damage
+		}
+	}
+	return attack, damage
+}
+
+// addItem puts n of an item in the pack. Tools take a slot each and never
+// stack — two axes are two axes, in two slots, so a pack of tools costs
+// you the room it looks like it costs.
 func addItem(inv []ItemStack, id string, n int) []ItemStack {
+	if protocol.IsTool(id) {
+		for i := 0; i < n; i++ {
+			if len(inv) >= protocol.InvSlots {
+				return inv
+			}
+			inv = append(inv, ItemStack{ID: id, N: 1})
+		}
+		return inv
+	}
 	for i := range inv {
 		if inv[i].ID == id {
 			inv[i].N += n
@@ -1008,9 +1049,20 @@ func addItem(inv []ItemStack, id string, n int) []ItemStack {
 // aliasing would mean duplicated items.
 func removeItem(inv []ItemStack, id string, n int) []ItemStack {
 	out := make([]ItemStack, 0, len(inv))
+	left := n
 	for _, it := range inv {
-		if it.ID == id {
-			it.N -= n
+		if it.ID == id && left > 0 {
+			if protocol.IsTool(id) {
+				// One slot, one tool: drop this entry and move on.
+				left--
+				continue
+			}
+			take := left
+			if take > it.N {
+				take = it.N
+			}
+			it.N -= take
+			left -= take
 			if it.N <= 0 {
 				continue
 			}

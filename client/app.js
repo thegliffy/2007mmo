@@ -3,6 +3,8 @@
   const canvas = $("stage");
   const ctx = canvas.getContext("2d");
 
+  const PACK_SLOTS = 28;
+
   const state = {
     ws: null,
     tickMs: 600,
@@ -17,6 +19,7 @@
     items: {},
     skillInfo: {},
     shop: null,
+    heldTool: null,
     last: null,
     prevPos: {},
     lastTickAt: 0,
@@ -311,31 +314,57 @@
       const coins = (state.you && state.you.coins) || 0;
       purse.textContent = coins === 1 ? "1 coin" : coins + " coins";
     }
+    // The pack in slot order, exactly as the server holds it. It used to be
+    // drawn as one fixed slot per item type, which is a catalogue rather
+    // than an inventory: tools had nowhere to sit and two of a thing looked
+    // like one.
     const inv = (state.you && state.you.inv) || [];
-    const byId = {};
-    for (const it of inv) byId[it.id] = it;
-    // Same reasoning as renderSkills: take the order from the catalog so a
-    // new item shows up without editing this file.
-    const known = Object.keys(state.items);
-    const order = known.length ? known : ["berry", "pulp", "tart", "nut", "roast"];
     let html = "";
-    for (const id of order) {
-      const it = byId[id];
-      const info = state.items[id] || { name: id, glyph: "?" };
+    for (let i = 0; i < PACK_SLOTS; i++) {
+      const it = inv[i];
       if (!it) {
         html += '<div class="slot empty"></div>';
         continue;
       }
-      html += '<div class="slot" data-id="' + id + '" title="' + esc(info.name) + '"><div>' +
-        esc(info.glyph) + "</div><div class=\"qty\">" + it.n + "</div></div>";
+      const info = state.items[it.id] || { name: it.id, glyph: "?" };
+      const held = state.heldTool === i ? " held" : "";
+      const tool = info.tool ? " tool" : "";
+      html +=
+        '<div class="slot' + tool + held + '" data-id="' + esc(it.id) + '" data-slot="' + i +
+        '" title="' + esc(info.name) + (info.tool && info.verb ? " — click, then click what to use it on" : "") +
+        '"><div>' + esc(info.glyph) + "</div>" +
+        (it.n > 1 ? '<div class="qty">' + it.n + "</div>" : "") +
+        "</div>";
     }
-    for (let i = order.length; i < 8; i++) html += '<div class="slot empty"></div>';
     $("inv").innerHTML = html;
+    const hint = $("held-hint");
+    if (hint) {
+      const h = heldToolItem();
+      hint.textContent = h ? "Holding the " + (state.items[h.id] || {}).name + " — click what to use it on." : "";
+      hint.classList.toggle("hidden", !h);
+    }
+  }
+
+  function heldToolItem() {
+    const inv = (state.you && state.you.inv) || [];
+    if (state.heldTool == null) return null;
+    const it = inv[state.heldTool];
+    if (!it) return null;
+    const info = state.items[it.id];
+    return info && info.tool && info.verb ? it : null;
   }
 
   $("inv").addEventListener("click", (e) => {
     const slot = e.target.closest(".slot");
     if (!slot || !slot.dataset.id) return;
+    const info = state.items[slot.dataset.id] || {};
+    if (info.tool && info.verb) {
+      // Take it in hand; the next click on the world says what to use it on.
+      const i = Number(slot.dataset.slot);
+      state.heldTool = state.heldTool === i ? null : i;
+      renderInv();
+      return;
+    }
     send({ t: "use", id: slot.dataset.id });
   });
 
@@ -345,6 +374,7 @@
     const slot = e.target.closest(".slot");
     if (!slot || !slot.dataset.id) return;
     e.preventDefault();
+    state.heldTool = null;
     send({ t: "drop", id: slot.dataset.id });
   });
 
@@ -371,6 +401,33 @@
   canvas.addEventListener("click", (e) => {
     const t = tileAt(e.clientX, e.clientY);
     if (!t) return;
+
+    // Holding a tool? Point it at something.
+    const held = heldToolItem();
+    if (held) {
+      const info = state.items[held.id] || {};
+      if (info.verb === "light") {
+        const pile = state.ground.find((g) => g.x === t.x && g.y === t.y);
+        if (pile) {
+          send({ t: "light", id: pile.id });
+          state.heldTool = null;
+          renderInv();
+          return;
+        }
+      }
+      if (info.verb === "chop") {
+        const tree = state.nodes.find((n) => n.kind === "tree" && n.x === t.x && n.y === t.y);
+        if (tree) {
+          send({ t: "interact", id: tree.id });
+          state.heldTool = null;
+          renderInv();
+          return;
+        }
+      }
+      // Clicked nothing the tool works on: put it away and carry on.
+      state.heldTool = null;
+      renderInv();
+    }
     const pick = globalThis.HollowmerePick;
     const intent = pick && pick.resolveCanvasClick
       ? pick.resolveCanvasClick(state.npcs, state.nodes, t, state.ground)

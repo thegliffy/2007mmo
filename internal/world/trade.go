@@ -37,6 +37,12 @@ var tradeBoard = []TradeOffer{
 	{Item: protocol.ItemRoast, Pays: 5, Costs: 12},
 	{Item: protocol.ItemTart, Pays: 7, Costs: 16},
 	{Item: protocol.ItemLeather, Pays: 25},
+
+	// Tools. She sells them dearer than she buys, like everything else, and
+	// the axe is priced so a single round of the brambles pays for it.
+	{Item: protocol.ItemFlint, Pays: 4, Costs: 8},
+	{Item: protocol.ItemAxe, Pays: 6, Costs: 12},
+	{Item: protocol.ItemSword, Pays: 30, Costs: 60},
 }
 
 func offerFor(item string) (TradeOffer, bool) {

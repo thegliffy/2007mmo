@@ -7,6 +7,15 @@ import (
 	"github.com/thegliffy/2007mmo/internal/protocol"
 )
 
+// withTools hands a player the kit a test needs, since tools are now
+// required rather than merely useful.
+func withTools(p *Player, ids ...string) *Player {
+	for _, id := range ids {
+		p.Inv = addItem(p.Inv, id, 1)
+	}
+	return p
+}
+
 func firstNodeOfKind(w *World, kind string) *Node {
 	for _, n := range w.Nodes {
 		if n.Kind == kind {
@@ -32,7 +41,7 @@ func TestChoppingATreeYieldsALog(t *testing.T) {
 	if tree == nil {
 		t.Fatal("no choppable trees on the map")
 	}
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 
 	w.SetInteract("p1", tree.ID)
@@ -54,7 +63,7 @@ func TestChoppingATreeYieldsALog(t *testing.T) {
 func TestChoppingDoesNotTrainForaging(t *testing.T) {
 	w := testWorld(t, newMem())
 	tree := firstNodeOfKind(w, KindTree)
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 	w.SetInteract("p1", tree.ID)
 	for i := 0; i < chopTicks+3; i++ {
@@ -69,7 +78,7 @@ func TestChoppingDoesNotTrainForaging(t *testing.T) {
 func TestTreeDepletesAndRegrows(t *testing.T) {
 	w := testWorld(t, newMem())
 	tree := firstNodeOfKind(w, KindTree)
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 
 	for i := 0; i < treeYield; i++ {
@@ -137,7 +146,7 @@ func TestMillstonePrefersBerriesOverLogs(t *testing.T) {
 
 func TestLightingALogPileMakesAFire(t *testing.T) {
 	w := testWorld(t, newMem())
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemFlint)
 	g := w.dropPile(p.X, p.Y, []ItemStack{{ID: protocol.ItemLog, N: 1}}, 0, p.ID)
 
 	msg, ok := w.LightFire("p1", g.ID)
@@ -164,7 +173,7 @@ func TestLightingALogPileMakesAFire(t *testing.T) {
 
 func TestCannotLightWithoutALog(t *testing.T) {
 	w := testWorld(t, newMem())
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemFlint)
 	g := w.dropPile(p.X, p.Y, []ItemStack{{ID: protocol.ItemBerry, N: 1}}, 0, p.ID)
 	if _, ok := w.LightFire("p1", g.ID); ok {
 		t.Fatal("lit a fire from a brambleberry")
@@ -175,7 +184,7 @@ func TestCannotLightWithoutALog(t *testing.T) {
 func TestCannotLightAReservedPile(t *testing.T) {
 	w := testWorld(t, newMem())
 	a := w.UpsertPlayer(NewPlayerRec("a", "Ash"), true)
-	b := w.UpsertPlayer(NewPlayerRec("b", "Briar"), true)
+	b := withTools(w.UpsertPlayer(NewPlayerRec("b", "Briar"), true), protocol.ItemFlint)
 	b.X, b.Y = a.X, a.Y
 	g := w.dropPile(a.X, a.Y, []ItemStack{{ID: protocol.ItemLog, N: 1}}, 0, a.ID)
 	if _, ok := w.LightFire(b.ID, g.ID); ok {
@@ -187,7 +196,8 @@ func TestCannotLightAReservedPile(t *testing.T) {
 func TestCampfireCooks(t *testing.T) {
 	w := testWorld(t, newMem())
 	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
-	p.Inv = []ItemStack{{ID: protocol.ItemLog, N: 0}, {ID: protocol.ItemNut, N: 1}}
+	p.Inv = []ItemStack{{ID: protocol.ItemNut, N: 1}}
+	withTools(p, protocol.ItemFlint)
 	g := w.dropPile(p.X+1, p.Y, []ItemStack{{ID: protocol.ItemLog, N: 1}}, 0, p.ID)
 	if _, ok := w.LightFire("p1", g.ID); !ok {
 		t.Fatal("setup: could not light the fire")
@@ -209,7 +219,7 @@ func TestCampfireCooks(t *testing.T) {
 
 func TestCampfireBurnsOut(t *testing.T) {
 	w := testWorld(t, newMem())
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemFlint)
 	g := w.dropPile(p.X, p.Y, []ItemStack{{ID: protocol.ItemLog, N: 1}}, 0, p.ID)
 	w.LightFire("p1", g.ID)
 	before := len(w.Nodes)
@@ -226,7 +236,7 @@ func TestCampfireBurnsOut(t *testing.T) {
 func TestCampfireIsNotPersisted(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemFlint)
 	g := w.dropPile(p.X, p.Y, []ItemStack{{ID: protocol.ItemLog, N: 1}}, 0, p.ID)
 	w.LightFire("p1", g.ID)
 	for i := 0; i < 20; i++ {
@@ -256,7 +266,7 @@ func TestUnreachableTreesAreNotNodes(t *testing.T) {
 // on the map, sending them all every tick was most of the frame.
 func TestSnapshotOmitsNodesAtRest(t *testing.T) {
 	w := testWorld(t, newMem())
-	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 
 	if got := len(w.Snapshot("p1").Nodes); got != 0 {
 		t.Fatalf("a quiet world sent %d nodes; it should send none", got)
