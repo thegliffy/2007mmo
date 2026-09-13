@@ -38,7 +38,7 @@ func main() {
 	ctxDone := make(chan os.Signal, 1)
 	signal.Notify(ctxDone, os.Interrupt, syscall.SIGTERM)
 
-	var connected, drops, msgs, authFails, throttled atomic.Int64
+	var connected, drops, msgs, authFails, throttled, refused atomic.Int64
 	var rttNanos atomic.Int64
 	var rttN atomic.Int64
 
@@ -49,7 +49,7 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 			runBot(i, *addr, *statsURL, *password, *hotspot, stop,
-				&connected, &drops, &msgs, &authFails, &throttled, &rttNanos, &rttN)
+				&connected, &drops, &msgs, &authFails, &throttled, &refused, &rttNanos, &rttN)
 		}(i)
 		time.Sleep(8 * time.Millisecond)
 	}
@@ -69,9 +69,10 @@ func main() {
 		if rttN.Load() > 0 {
 			avgRTT = time.Duration(rttNanos.Load() / rttN.Load())
 		}
-		fmt.Printf("%s bots=%d/%d drops=%d authfail=%d throttled=%d msgs=%d rtt=%s | world tick=%d p50=%.2fms p99=%.2fms ws=%d\n",
-			tag, connected.Load(), *n, drops.Load(), authFails.Load(), throttled.Load(), msgs.Load(), avgRTT,
-			st.Tick, st.TickP50Ms, st.TickP99Ms, st.WS)
+		fmt.Printf("%s bots=%d/%d drops=%d refused=%d authfail=%d throttled=%d msgs=%d rtt=%s | "+
+			"tick p99=%.1fms loop p99=%.1fms lag p99=%.1fms framedrop=%d ws=%d\n",
+			tag, connected.Load(), *n, drops.Load(), refused.Load(), authFails.Load(), throttled.Load(),
+			msgs.Load(), avgRTT, st.TickP99Ms, st.LoopP99Ms, st.LagP99Ms, st.FramesDropped, st.WS)
 	}
 
 	running := true
@@ -88,6 +89,10 @@ func main() {
 	close(stop)
 	wg.Wait()
 	printSnap("done")
+	if refused.Load() > 0 {
+		fmt.Printf("\n%d bots never got a socket: the per-IP connection budget ran out.\n"+
+			"  Raise HOLLOWMERE_LIMIT_CONN_RATE / _BURST for load runs.\n", refused.Load())
+	}
 	if throttled.Load() > 0 {
 		fmt.Printf("\n%d bots never got a welcome: the per-IP hello budget ran out.\n"+
 			"  Every bot shares one address, so raise HOLLOWMERE_LIMIT_HELLO_RATE / _BURST\n"+
@@ -103,10 +108,24 @@ func main() {
 		if st.TickP99Ms < 50 {
 			fmt.Println("gate T1-ish: tick p99 < 50ms  PASS (check empty-world separately)")
 		}
-		if *n >= 200 && st.TickP99Ms < 150 && drops.Load() == 0 {
-			fmt.Println("gate T2: 200 bots hotspot p99 < 150ms, no WS collapse  PASS")
-		} else if *n >= 200 {
-			fmt.Printf("gate T2: p99=%.2fms drops=%d  (target p99<150, drops=0)\n", st.TickP99Ms, drops.Load())
+		if *n >= 200 {
+			// Headroom, not an arbitrary millisecond count: the loop must
+			// fit inside the tick with room to spare, and lag must stay
+			// near zero. Lag only grows once loop time exceeds the tick,
+			// so it is the last thing to move and the first thing to trust.
+			budget := float64(st.TickMs)
+			ok := st.LoopP99Ms < budget*0.5 && st.LagP99Ms < budget*0.1 &&
+				drops.Load() == 0 && refused.Load() == 0
+			verdict := "FAIL"
+			if ok {
+				verdict = "PASS"
+			}
+			fmt.Printf("gate T2 (%s): %d/%d joined | loop p99 %.1fms of %.0fms budget (%.0f%%) | "+
+				"lag p99 %.1fms | tick p99 %.1fms | frames dropped %d | sockets lost %d\n",
+				verdict, *n-int(refused.Load())-int(drops.Load()), *n,
+				st.LoopP99Ms, budget, 100*st.LoopP99Ms/budget,
+				st.LagP99Ms, st.TickP99Ms, st.FramesDropped, drops.Load())
+			fmt.Println("  loop must fit the tick with margin; lag near zero means it did.")
 		}
 	}
 }
@@ -123,7 +142,7 @@ func lastStats(url string) protocol.Stats {
 }
 
 func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan struct{},
-	connected, drops, msgs, authFails, throttled, rttNanos, rttN *atomic.Int64) {
+	connected, drops, msgs, authFails, throttled, refused, rttNanos, rttN *atomic.Int64) {
 
 	// The world only upgrades authenticated sockets, so each bot needs a
 	// real account and a real session cookie before it can dial.
@@ -136,9 +155,37 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 	dialer := websocket.Dialer{HandshakeTimeout: 8 * time.Second}
 	hdr := http.Header{}
 	hdr.Set("Cookie", cookie)
-	conn, _, err := dialer.Dial(addr, hdr)
-	if err != nil {
-		drops.Add(1)
+
+	// The per-IP connection budget sees every bot as the same caller, so a
+	// 200-bot run is refused at the upgrade long before the world is under
+	// any real load. Back off and ask again rather than counting it as a
+	// lost socket: the limiter is doing its job, and a real crowd arriving
+	// from 200 addresses would never hit it.
+	var conn *websocket.Conn
+	for attempt := 0; attempt < 12; attempt++ {
+		c, resp, derr := dialer.Dial(addr, hdr)
+		if derr == nil {
+			conn = c
+			break
+		}
+		code := 0
+		if resp != nil {
+			code = resp.StatusCode
+			_ = resp.Body.Close()
+		}
+		if code != http.StatusTooManyRequests {
+			drops.Add(1)
+			return
+		}
+		select {
+		case <-time.After(time.Duration(250*(attempt+1))*time.Millisecond +
+			time.Duration(rand.Intn(500))*time.Millisecond):
+		case <-stop:
+			return
+		}
+	}
+	if conn == nil {
+		refused.Add(1)
 		return
 	}
 	defer conn.Close()
@@ -155,7 +202,7 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 	var youX, youY int
 	nodes := []protocol.NodeView{}
 	inWorld := make(chan struct{}, 1)
-	refused := make(chan struct{}, 1)
+	helloRefused := make(chan struct{}, 1)
 
 	go func() {
 		for {
@@ -189,7 +236,7 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 			// routinely; tell the main loop to ask again.
 			if peek.T == protocol.MsgErr {
 				select {
-				case refused <- struct{}{}:
+				case helloRefused <- struct{}{}:
 				default:
 				}
 			}
@@ -207,7 +254,7 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 	}()
 
 	joined := false
-	for attempt := 0; attempt < 8 && !joined; attempt++ {
+	for attempt := 0; attempt < 16 && !joined; attempt++ {
 		if attempt > 0 {
 			// Back off, then ask again. Jittered so 200 bots do not all
 			// retry on the same beat.
@@ -226,7 +273,7 @@ func runBot(i int, addr, statsURL, password string, hotspot bool, stop <-chan st
 		select {
 		case <-inWorld:
 			joined = true
-		case <-refused:
+		case <-helloRefused:
 			// Throttled; loop around and retry.
 		case <-time.After(8 * time.Second):
 			drops.Add(1)
