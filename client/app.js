@@ -1080,11 +1080,39 @@
             }
             ctx.fillRect(px, py, tw, th);
         }
+        const spr = globalThis.HollowmereSprites;
+        if (spr) {
+          const tkey = spr.tileKey(g, scars);
+          const covered = spr.tile(ctx, tkey, px, py, tw, th);
+          if (g === "T") {
+            if (!spr.prop(ctx, "props/tree", px, py, tw, th) && covered) {
+              ctx.fillStyle = "#6b3e1a";
+              ctx.fillRect(px + tw * 0.4, py + th * 0.45, tw * 0.2, th * 0.5);
+              ctx.fillStyle = "#245218";
+              ctx.beginPath();
+              ctx.arc(px + tw * 0.5, py + th * 0.38, tw * 0.38, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          if (x === 8 && y === 8) spr.prop(ctx, "props/stile", px, py, tw, th);
+        }
       }
     }
 
     for (const n of state.nodes) {
       const px = n.x * tw, py = n.y * th;
+      const spr = globalThis.HollowmereSprites;
+      const skey = spr && spr.nodeKey(n);
+      if (skey && spr.prop(ctx, skey, px, py, tw, th)) {
+        if (n.kind === "fire" && n.burns > 0) {
+          const life = Math.max(0, Math.min(1, n.burns / 150));
+          ctx.fillStyle = "rgba(40,24,12,0.75)";
+          ctx.fillRect(px + 4, py + th - 6, tw - 8, 3);
+          ctx.fillStyle = "hsl(28,80%,55%)";
+          ctx.fillRect(px + 4, py + th - 6, (tw - 8) * life, 3);
+        }
+        continue;
+      }
       if (n.kind === "bush") {
         ctx.fillStyle = n.ready ? "#2f5a22" : "#3a4a30";
         ctx.beginPath();
@@ -1258,21 +1286,26 @@
         ctx.stroke();
       }
       if (f.kind === "npc") {
-        const hue = hostile ? 8 : 35;
-        ctx.fillStyle = "rgba(0,0,0,0.25)";
-        ctx.beginPath();
-        ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
-        ctx.fillRect(px - 7, py - 8, 14, 16);
-        if (hostile) {
-          ctx.fillStyle = "#5a2a18";
-          ctx.fillRect(px - 3, py - 16, 6, 5);
+        const spr = globalThis.HollowmereSprites;
+        const nkey = spr && spr.npcKey(e);
+        const drew = nkey && spr.figure(ctx, nkey, px, py, tw, th);
+        if (!drew) {
+          const hue = hostile ? 8 : 35;
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.beginPath();
+          ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
+          ctx.fillRect(px - 7, py - 8, 14, 16);
+          if (hostile) {
+            ctx.fillStyle = "#5a2a18";
+            ctx.fillRect(px - 3, py - 16, 6, 5);
+          }
+          ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
+          ctx.beginPath();
+          ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
+          ctx.fill();
         }
-        ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
-        ctx.beginPath();
-        ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
-        ctx.fill();
       } else {
         drawPaperdoll(ctx, px, py, 8, e.looks || defaultDraft(), f.kind === "you");
       }
@@ -1381,5 +1414,6 @@
     }
   }
 
+  if (globalThis.HollowmereSprites && HollowmereSprites.load) HollowmereSprites.load();
   draw();
 })();

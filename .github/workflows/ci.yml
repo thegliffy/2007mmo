@@ -16,6 +16,8 @@ jobs:
         run: go test -race ./...
       - name: client pick
         run: node scripts/pick-npc-test.js
+      - name: client sprites
+        run: node scripts/sprites-test.js
       - name: build
         run: go build -o /tmp/world ./cmd/world && go build -o /tmp/bots ./cmd/bots
 

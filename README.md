@@ -6,6 +6,8 @@ You walk a woodland hamlet, wave at other people, pick brambleberries and hazel 
 
 Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” labels.
 
+**Art pass:** still the **top-down** hamlet. AD sprites drop into [`client/assets/`](client/assets/README.md) and draw in the existing tiles. Wood + parchment HUD is tightened. No isometric camera.
+
 by **thegliffy**
 
 **Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). The oak chest (personal bank) is in this cut.
@@ -43,10 +45,10 @@ Week 1 is still the woodland-life cut under the new map.
 
 1. **Ops / prod honesty.** Deploy and rollback notes, a Postgres dump/restore pair, and a **safe drill** that restores into a throwaway container. `/stats` and `/metrics` expose tick, presence, and rate-limit counters. Auth (`hello`), WebSocket upgrades, per-client frames, and chat are rate-limited. Kyle’s live Compose runbook is **[docs/ops.md](docs/ops.md)** (2007.gliffy.tv).
 2. **Deeper gather → process → use.** Still woodland life only (Foraging / Cooking). Brambleberries crush on the millstone into pulp, then bake at the hearth. Hazel nuts roast on the same hearth. The pack still commits to Postgres **before** memory (no dupes).
-3. **Readable HUD.** Carved wood frame, parchment panels, recessed pack slots. CSS/layout only — not stylized-3D art.
+3. **Readable HUD.** Carved wood frame, parchment panels, recessed pack slots. Tightened typography and spacing on this art pass.
 4. **IP string pass.** UI copy is Hollowmere voice (stile, pack, hearth, millstone, woodland work). No generic clone labels in the client.
 
-**Camera:** still **top-down**. A ¾ view is a follow-up.
+**Camera:** still **top-down**. Sprites are a filename swap in [`client/assets/`](client/assets/README.md) — tiles, props, and hostiles draw in the existing cells. A ¾ view is paused.
 
 ### Tools and the pack
 
@@ -358,7 +360,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p2-bank` and `pick-npc.js?v=p2-bank` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=ad-hamlet` (and `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -495,7 +497,8 @@ internal/store     Postgres (accounts + packs) + Redis (sessions/presence)
 internal/auth      accounts, scrypt passwords, session issue/revoke
 internal/hub       WebSocket join / broadcast / limits / metrics / auth HTTP
 internal/protocol  shared JSON frames
-client/            carved wood + parchment HUD + canvas hamlet
+client/            carved wood + parchment HUD + top-down canvas hamlet
+client/assets/     AD drop: tiles, props, hostiles (filename swap)
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
 scripts/           smoke, T3 helpers, metal-loop, no-dupe chaos, pick-npc-test, login helper, pg backup / restore / drill
