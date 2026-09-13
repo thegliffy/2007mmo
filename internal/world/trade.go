@@ -42,7 +42,13 @@ var tradeBoard = []TradeOffer{
 	// the axe is priced so a single round of the brambles pays for it.
 	{Item: protocol.ItemFlint, Pays: 4, Costs: 8},
 	{Item: protocol.ItemAxe, Pays: 6, Costs: 12},
+	{Item: protocol.ItemPick, Pays: 7, Costs: 14},
 	{Item: protocol.ItemSword, Pays: 30, Costs: 60},
+
+	{Item: protocol.ItemCopper, Pays: 2},
+	{Item: protocol.ItemTin, Pays: 2},
+	{Item: protocol.ItemBar, Pays: 8},
+	{Item: protocol.ItemKnife, Pays: 20, Costs: 42},
 }
 
 func offerFor(item string) (TradeOffer, bool) {

@@ -18,8 +18,8 @@ func firstHostile(w *World, name string) *NPC {
 
 func TestMapBiggerThanPoCWithSouthPath(t *testing.T) {
 	w := testWorld(t, newMem())
-	if w.W < 28 || w.H < 32 {
-		t.Fatalf("map should be larger than the 24x16 PoC, got %dx%d", w.W, w.H)
+	if w.W < 40 || w.H < 32 {
+		t.Fatalf("map should reach the eastern scars, got %dx%d", w.W, w.H)
 	}
 	if !w.Walkable(spawnX, spawnY) {
 		t.Fatal("stile spawn must stay walkable")
@@ -571,7 +571,7 @@ func TestOlderCharactersGainTheNewSkills(t *testing.T) {
 		Skills: map[string]SkillState{protocol.SkillForage: {Lv: 7, XP: 300}},
 	}
 	p := w.UpsertPlayer(legacy, true)
-	for _, id := range []string{protocol.SkillMelee, protocol.SkillDefense, protocol.SkillCook} {
+	for _, id := range []string{protocol.SkillMelee, protocol.SkillDefense, protocol.SkillCook, protocol.SkillMine, protocol.SkillSmith} {
 		if sk, ok := p.Skills[id]; !ok || sk.Lv != 1 {
 			t.Errorf("%s missing or not level 1 on an older character: %+v", id, sk)
 		}

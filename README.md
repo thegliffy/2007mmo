@@ -27,7 +27,7 @@ Login attempts are throttled per address *and* per account name. Behind a proxy 
 
 This tree keeps Week 1 (woodland loop, wood HUD, ops honesty) and adds the next Kyle ask: a **bigger hamlet map** and **southern combat**.
 
-1. **Southern briar-woods.** The tile map is **28×32** (was 24×16). The stile, hearth, millstone, bramble, and hazel stay where Week 1 put them. A path runs south into woods, a pond, and a clearing.
+1. **Southern briar-woods.** The tile map is **40×32** (was 28×32, and 24×16 before that). The stile, hearth, millstone, bramble, and hazel stay where Week 1 put them. A path runs south into woods, a pond, and a clearing. Another path opens **east** into the scars.
 2. **Hostile NPCs.** Two **Thornkin** and one **Brambleback** wander the south (original names). Villagers stay in the hamlet and will not fight you.
 3. **Combat v0.** Tick-authoritative **1vNPC**. Click **near** a beast (Chebyshev ≤ 1 of the clicked tile) or send `attack` — you walk adjacent, then both sides swing once per 600ms tick. Heart and target HP show on the parchment HUD and over the sprites. A Thornkin is a win; the Brambleback can drop you.
 4. **Soft defeat.** HP to 0 wakes you at the stile with an empty threat and the same pack. Fallen beasts respawn in the clearing after a short wait. Hearth tarts and roast hazel mend a little heart.
@@ -58,12 +58,15 @@ slots, so a pack of tools costs what it looks like it costs.
 |------|----------------|------------------|
 | Woodsman's axe | chopping trees | 12 |
 | Flint and steel | lighting a pile of logs | 8 |
+| Quarry pick | mining copper and tin | 14 |
+| Bronze knife | +2 Melee levels and +1 damage | 42 |
 | Briar sword | +4 Melee levels and +1 damage | 60 |
 
 **Work that needs a tool now requires one.** No axe, no logs — the tree just
-says so. No flint, no fire. Foraging and cooking need nothing, which is what
+says so. No flint, no fire. No pick, no ore. Foraging and cooking need nothing, which is what
 makes them the way in: pick a round of brambles, sell them to the pedlar, and
-the twelve coins buy your first axe.
+the twelve coins buy your first axe. A pick is fourteen — one more berry, or a
+log.
 
 Carrying a tool is enough; there is no equip slot. The best blade in the pack
 counts toward your swing, so a sword works by being on you rather than by being
@@ -76,6 +79,7 @@ what it is waiting for. The next click on the world says what to use it on:
 
 - flint and steel, then a pile of logs → a campfire
 - the axe, then a tree → a chop
+- the quarry pick, then a copper or tin vein → a mine
 
 Clicking anywhere it does not apply simply puts the tool away. The plain clicks
 still work too (click a tree to chop, right-click a pile to light it), so the
@@ -97,6 +101,8 @@ and open her board.
 | Roast hazel | 5 | 12 |
 | Hearth tart | 7 | 16 |
 | Paper | 8 | — |
+| Copper ore, Tin ore | 2 | — |
+| Bronze bar | 8 | — |
 | Goblin leather | 25 | — |
 
 She buys most of what the hamlet produces and sells cooked food, which is what
@@ -114,9 +120,10 @@ actually happen, so it never invites a refusal.
 
 ### Wood
 
-Trees are work now, not scenery. **72 of the 75** on the map can be chopped —
-the other three are walled in by their own clump, and a tree you can never stand
-beside has no business being a node.
+Trees are work now, not scenery. **134 of the 144** on the map can be chopped —
+the rest are walled in by their own clump, and a tree you can never stand
+beside has no business being a node. The scars added more timber along the
+hills; the rule did not change.
 
 - Click a **tree** (channel 3 ticks) → `Log` + **Woodcutting** XP.
 - Click the **millstone** with a log (channel 3 ticks) → `Paper` + Woodcutting XP.
@@ -131,13 +138,51 @@ A campfire is a node that never touches the store. It exists in memory, burns
 down, and vanishes — persisting it would leave a fire on the map after a restart
 with nothing burning under it.
 
+### The eastern scars
+
+The hamlet’s east wall is open now. A path runs out into **the scars** — rocky
+hills, copper and tin, a kiln already hot, and an anvil. The stile, the hearth,
+the millstone, and the southern briar-woods stay where they were. The map is
+**40×32**.
+
+This is the beginner metal loop, the same shape as wood: a tool, a gather, a
+process, a use.
+
+- Buy a **quarry pick** from Wend (14 coins). Foraging still pays for the first
+  tool; a pick is one log or one extra berry more than an axe.
+- Walk **east** from the millstone path into the scars.
+- Click a **copper vein** or a **tin vein** with a pick (channel 3 ticks) → ore
+  + **Mining** XP. No pick, no ore — the rock just says so.
+- Click the **kiln** carrying both ores (channel 3 ticks) → `Bronze bar` +
+  **Smithing** XP. The kiln is already hot, like the hearth: it does not want
+  fuel. Copper alone or tin alone will not run.
+- Click the **anvil** with a bar (channel 3 ticks) → `Bronze knife` + Smithing XP.
+
+The knife is a blade: **+2 Melee levels and +1 damage**, so a beginner’s swing
+goes from 2 to 3. The pedlar’s briar sword is still the better one (4 and +1),
+and she will sell you the knife for 42 if you would rather not smith. Forging
+it costs only the walk and the ores.
+
+Mining and Smithing sit on the same 20-level ladder as Foraging, Cooking,
+Woodcutting, Melee, and Defense. Older characters pick them up on login at
+level 1, the way they did when Melee arrived.
+
+Veins deplete and come back, the way brambles and trees do. A vein you can
+never stand beside is scenery, not a node. The kiln and anvil are always
+ready. Ore, bars, and the knife go through **commit-before-memory**, so a
+killed world loses an in-flight channel rather than minting a second lump.
+
+Out of scope on purpose: a full smithing tree, iron and coal, plate, or a
+second alloy.
+
 ### Nodes are sent once, not every tick
 
-Adding 72 trees took the node count from 8 to 80, and the state frame used to
-carry every node 1.67 times a second to every client. Positions and kinds never
-change, so the **full list now ships once in the welcome** and state frames carry
-**only the nodes that are not at rest** — a chopped tree, a bramble on cooldown,
-a burning campfire. Anything absent is ready.
+Adding trees (and now veins) took the node count well past eighty, and the
+state frame used to carry every node 1.67 times a second to every client.
+Positions and kinds never change, so the **full list now ships once in the
+welcome** and state frames carry **only the nodes that are not at rest** — a
+chopped tree, a spent vein, a bramble on cooldown, a burning campfire.
+Anything absent is ready.
 
 Measured on the live client:
 
@@ -277,8 +322,8 @@ Details, deploy, rollback, and live rate-limit knobs: **[docs/ops.md](docs/ops.m
 
 1. A browser loads, **registers or logs in** (name + password, scrypt-hashed, HttpOnly session cookie), and joins **one world** over an authenticated WebSocket. Compose also terminates **WSS** on `:8443` (self-signed).
 2. An authoritative **~600ms** tick loop runs in **Docker Compose** next to **Postgres** (canonical state) and **Redis** (session / presence).
-3. Click-to-move (WASD optional) on a **28×32** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet).
-4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). The pack **persists across logout**.
+3. Click-to-move (WASD optional) on a **40×32** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet and the scars).
+4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). **Mining** → kiln → anvil. The pack **persists across logout**.
 5. **1vNPC combat** on the tick: click-to-attack, HP feedback, soft respawn at the stile.
 6. A **headless bot harness** (`cmd/bots`) opens real WS clients — not browsers — for load.
 
@@ -290,9 +335,9 @@ It does **not** claim 1k CCU, a skill tree, a market, quests, PvP, or multiple w
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click **near** a Thornkin to fight. Type in the parchment log.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=auth-1` and `pick-npc.js?v=auth-1` so a stale pre-auth `app.js` does not keep sending the old join frame.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=metal-2` and `pick-npc.js?v=metal-1` so a stale `app.js` does not keep the old map.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -302,6 +347,7 @@ Headless stand-in for two tabs (needs `pip install websockets`):
 python3 scripts/smoke.py
 python3 scripts/week1-loop.py   # berry → mill → tart, hazel → roast, persist
 python3 scripts/south-fight.py  # walk-equivalent: attack a Thornkin to the bracken
+python3 scripts/metal-loop.py   # forage → buy a pick → mine → smelt → forge a knife
 ```
 
 Each script registers its own throwaway account on first run (`scripts/hollow_auth.py`) and logs in on later runs. They are for a local stack — do not point them at the live host.
@@ -319,7 +365,7 @@ Useful URLs: `/health`, `/stats`, `/metrics`.
 npm start          # same as docker compose up --build
 npm run stats
 npm run metrics
-npm test           # Go unit tests (tick, gather, mill, roast, combat, no-dupe recovery, auth)
+npm test           # Go unit tests (tick, gather, mill, roast, mine, smelt, forge, combat, no-dupe recovery, auth)
 npm run backup     # dump Compose Postgres
 npm run drill      # safe restore drill (throwaway container)
 ```
@@ -347,8 +393,9 @@ go run ./cmd/world
 - **Move:** click a walkable tile; the server pathfinds and steps **one tile per tick**.
 - **Fight:** Melee trains on damage dealt, Defense on blows taken. Both change the numbers, not just the score.
 - **Forage:** bramble → brambleberry; hazel → hazel nut.
-- **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut.
-- **Use:** click a hearth tart or roast hazel in the pack (mends heart).
+- **Mine:** walk east into the scars; copper + tin with a quarry pick.
+- **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut. The kiln smelts copper and tin into a bronze bar; the anvil forges the bar into a knife.
+- **Use:** click a hearth tart or roast hazel in the pack (mends heart). A bronze knife in the pack counts toward your swing.
 - **Fight:** click near a southern hostile (neighbor tile is enough); one swing each per tick while adjacent.
 - **Death:** wake at the stile with full heart and the same pack.
 - **Chat:** public, one line per tick, plus a short token-bucket cap.
@@ -411,7 +458,7 @@ budget, then goes over all at once. Fixing it means moving player saves off the
 tick, which is deliberately not done — see the T3 rule below, which is the
 property that makes it delicate.
 
-T3 rule: gather / mill / cook / eat **write Postgres first**, then update memory. A crash mid-tick loses an in-flight channel, never clones an item.
+T3 rule: gather / mill / cook / eat / mine / smelt / forge **write Postgres first**, then update memory. A crash mid-tick loses an in-flight channel, never clones an item.
 
 ## Layout
 
