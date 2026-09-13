@@ -271,6 +271,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		Map:      h.World.MapInfo(),
 		You:      h.World.Snapshot(p.ID).You,
 		Items:    protocol.Catalog(),
+		Skills:   protocol.SkillCatalog(),
 	})
 	h.sendJSON(cl, h.World.Snapshot(p.ID))
 }

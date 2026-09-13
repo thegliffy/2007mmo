@@ -13,6 +13,7 @@
     npcs: [],
     nodes: [],
     items: {},
+    skillInfo: {},
     last: null,
     prevPos: {},
     lastTickAt: 0,
@@ -118,6 +119,7 @@
         state.map = msg.map;
         state.you = msg.you;
         state.items = msg.items || {};
+      state.skillInfo = msg.skillInfo || {};
         state.handle = msg.handle || null;
         state.username = msg.username || null;
         $("acct-name").textContent = state.username || "";
@@ -165,12 +167,18 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // Driven by the catalog the server sends, not a list baked in here. A
+  // skill added server-side used to be invisible until this function was
+  // edited to match.
   function renderSkills() {
     const sk = (state.you && state.you.skills) || {};
-    const forage = sk.forage || { xp: 0, lv: 1 };
-    const cook = sk.cook || { xp: 0, lv: 1 };
-    $("skills").innerHTML =
-      skillRow("Foraging", forage) + skillRow("Cooking", cook);
+    const info = state.skillInfo || {};
+    const ids = Object.keys(info).length
+      ? Object.keys(info).sort((a, b) => (info[a].order || 0) - (info[b].order || 0))
+      : Object.keys(sk).sort();
+    $("skills").innerHTML = ids
+      .map((id) => skillRow((info[id] && info[id].name) || id, sk[id] || { xp: 0, lv: 1 }))
+      .join("");
   }
 
   // Mirror of LevelFromXP on the server: each level costs 25 + 15 per
@@ -219,7 +227,10 @@
     const inv = (state.you && state.you.inv) || [];
     const byId = {};
     for (const it of inv) byId[it.id] = it;
-    const order = ["berry", "pulp", "tart", "nut", "roast"];
+    // Same reasoning as renderSkills: take the order from the catalog so a
+    // new item shows up without editing this file.
+    const known = Object.keys(state.items);
+    const order = known.length ? known : ["berry", "pulp", "tart", "nut", "roast"];
     let html = "";
     for (const id of order) {
       const it = byId[id];

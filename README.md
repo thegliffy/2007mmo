@@ -54,6 +54,36 @@ Week 1 is still the woodland-life cut under the new map.
 - Click the **hearth** with a nut (channel 2 ticks) → `Roast hazel` + Cooking XP.
 - Click a tart or roast in the pack to eat it. Whole berries will not bake; the hearth says so. Food also mends a little heart.
 
+### Melee and Defense
+
+Fighting trains two skills, on the same 20-level ladder as Foraging and Cooking.
+
+| | Effect | Trains on |
+|---|--------|-----------|
+| **Melee** | damage you deal: `2 + level/4` — 2 at level 1, 7 at 20 | damage dealt × 4 |
+| **Defense** | damage absorbed: `level/6` — 0 at level 1, 3 at 18+ | the raw force of each blow × 6 |
+
+Both are **flat and deterministic**. The world has no randomness anywhere — even
+villager wander is derived from the tick number — and a swing that sometimes
+missed would be the first thing to break that. It also means a fight can be
+worked out on paper, which is what makes the numbers arguable rather than vibes.
+
+Two rules hold the shape:
+
+- **A blow always lands for at least 1.** No amount of Defense makes the briars
+  safe to stand still in.
+- **Defense trains on the raw blow, not on what got through.** Otherwise getting
+  better at absorbing would slow down exactly as it started working.
+- **The killing blow draws no retaliation**, so a fight you can only just win is
+  still worth having.
+
+The arc this is tuned for: a **Thornkin** (6 hp, 1 damage) is a fair first fight
+at level 1 — three swings, two damage taken. The **Brambleback** (14 hp, 2
+damage) kills a beginner and is the wall you train against; Melee 12 fells it in
+three swings, or Defense 12 lets you outlast it. Neither path is required.
+
+Overkill does not pay: hitting a beast with 1 hp left earns experience for 1.
+
 ### Southern combat (Week 2)
 
 - Walk **south** from the stile along the path until the trees open.
@@ -146,6 +176,7 @@ go run ./cmd/world
 - **Identity:** account name + password. The session is an HttpOnly cookie; the player id never reaches the browser, and peers only ever see a rotating handle.
 - **Log in:** register at the stile, then the cookie walks you straight back in next visit.
 - **Move:** click a walkable tile; the server pathfinds and steps **one tile per tick**.
+- **Fight:** Melee trains on damage dealt, Defense on blows taken. Both change the numbers, not just the score.
 - **Forage:** bramble → brambleberry; hazel → hazel nut.
 - **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut.
 - **Use:** click a hearth tart or roast hazel in the pack (mends heart).

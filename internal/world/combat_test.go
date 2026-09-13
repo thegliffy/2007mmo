@@ -392,3 +392,174 @@ func TestCombatDamageMarksPlayerDirty(t *testing.T) {
 		t.Fatal("taking damage did not mark the player for persistence")
 	}
 }
+
+// xpForLevel is the total XP a skill needs to reach n. Level is derived
+// from XP, never stored independently — setting SkillState.Lv on its own
+// is silently undone the moment any XP lands.
+func xpForLevel(n int) int {
+	total, need := 0, 25
+	for lv := 1; lv < n; lv++ {
+		total += need
+		need += 15
+	}
+	return total
+}
+
+func atLevel(n int) SkillState { return SkillState{Lv: n, XP: xpForLevel(n)} }
+
+func TestXPForLevelMatchesLevelFromXP(t *testing.T) {
+	for n := 1; n <= 20; n++ {
+		if got := LevelFromXP(xpForLevel(n)); got != n {
+			t.Fatalf("xpForLevel(%d) = %d xp, which reads back as level %d", n, xpForLevel(n), got)
+		}
+	}
+}
+
+func TestMeleeDamageLadder(t *testing.T) {
+	for _, c := range []struct{ lv, want int }{
+		{1, 2}, {3, 2}, {4, 3}, {7, 3}, {8, 4}, {12, 5}, {16, 6}, {20, 7},
+	} {
+		if got := meleeDamage(c.lv); got != c.want {
+			t.Errorf("meleeDamage(%d) = %d, want %d", c.lv, got, c.want)
+		}
+	}
+	// A missing or nonsense level must not hit for less than a beginner.
+	if meleeDamage(0) != baseMeleeDmg || meleeDamage(-4) != baseMeleeDmg {
+		t.Error("an unset level should hit like level 1")
+	}
+}
+
+func TestDefenseAbsorbsButNeverFully(t *testing.T) {
+	for _, c := range []struct{ lv, want int }{
+		{1, 0}, {5, 0}, {6, 1}, {11, 1}, {12, 2}, {18, 3}, {20, 3},
+	} {
+		if got := defenseReduction(c.lv); got != c.want {
+			t.Errorf("defenseReduction(%d) = %d, want %d", c.lv, got, c.want)
+		}
+	}
+	// However much you absorb, a blow always lands for something. Nobody
+	// gets to stand in the briars indefinitely.
+	for lv := 1; lv <= 20; lv++ {
+		for raw := 1; raw <= 5; raw++ {
+			if got := damageAfterDefense(raw, lv); got < minDamageTaken {
+				t.Fatalf("defense %d vs raw %d gave %d, below the floor", lv, raw, got)
+			}
+		}
+	}
+	if damageAfterDefense(2, 20) != minDamageTaken {
+		t.Error("max defense against a Brambleback should still take the floor")
+	}
+}
+
+// Fighting must train both skills: melee on what you deal, defense on
+// what is swung at you.
+func TestCombatTrainsMeleeAndDefense(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := w.npcByID("npc-thornkin-1")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+	w.tickCombat(p)
+
+	melee := p.Skills[protocol.SkillMelee]
+	def := p.Skills[protocol.SkillDefense]
+	if melee.XP != baseMeleeDmg*meleeXPPerDamage {
+		t.Fatalf("melee xp = %d, want %d for %d damage dealt",
+			melee.XP, baseMeleeDmg*meleeXPPerDamage, baseMeleeDmg)
+	}
+	if def.XP != thornkinDmg*defenseXPPerDamage {
+		t.Fatalf("defense xp = %d, want %d for a %d-damage blow",
+			def.XP, thornkinDmg*defenseXPPerDamage, thornkinDmg)
+	}
+}
+
+// Defense trains at the same rate however good it gets, because it pays
+// on the raw blow rather than on what got through.
+func TestDefenseXPDoesNotSlowAsItImproves(t *testing.T) {
+	gain := func(defLevel int) int {
+		// A fresh world each time: the NPC stays locked to whoever
+		// attacked it, so a second player would simply be turned away.
+		w := testWorld(t, newMem())
+		npc := w.npcByID("npc-thornkin-2")
+		p := w.UpsertPlayer(NewPlayerRec("p"+itoa(defLevel), "Kyle"), true)
+		p.Skills[protocol.SkillDefense] = atLevel(defLevel)
+		p.X, p.Y = npc.X, npc.Y-1
+		w.SetAttack(p.ID, npc.ID)
+		before := p.Skills[protocol.SkillDefense].XP
+		w.tickCombat(p)
+		return p.Skills[protocol.SkillDefense].XP - before
+	}
+	low, high := gain(1), gain(20)
+	if low != high {
+		t.Fatalf("defense xp per blow changed with level: %d at lv1, %d at lv20", low, high)
+	}
+}
+
+// The arc the numbers are meant to produce: a Brambleback kills a
+// beginner and is beatable once either skill has come along.
+func TestBramblebackGoesFromLethalToBeatable(t *testing.T) {
+	survives := func(meleeLv, defLv int) bool {
+		w := testWorld(t, newMem())
+		npc := w.npcByID("npc-brambleback")
+		p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+		p.Skills[protocol.SkillMelee] = atLevel(meleeLv)
+		p.Skills[protocol.SkillDefense] = atLevel(defLv)
+		p.X, p.Y = npc.X, npc.Y-1
+		w.SetAttack("p1", npc.ID)
+		for i := 0; i < 40; i++ {
+			w.tickCombat(p)
+			if !npc.Living() {
+				return true // felled it
+			}
+			if p.X == spawnX && p.Y == spawnY {
+				return false // woke at the stile
+			}
+		}
+		return false
+	}
+	if survives(1, 1) {
+		t.Error("a beginner should lose to the Brambleback; it is the wall to train against")
+	}
+	if !survives(12, 1) {
+		t.Error("melee 12 should be enough to fell the Brambleback")
+	}
+	if !survives(1, 12) {
+		t.Error("defense 12 should be enough to outlast the Brambleback")
+	}
+}
+
+// Overkill must not pay: hitting a 1-hp beast for 7 earns xp for 1.
+func TestMeleeXPIsCappedByRemainingHealth(t *testing.T) {
+	w := testWorld(t, newMem())
+	npc := w.npcByID("npc-thornkin-1")
+	npc.HP = 1
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Skills[protocol.SkillMelee] = atLevel(20)
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+	before := p.Skills[protocol.SkillMelee].XP
+	w.tickCombat(p)
+	gained := p.Skills[protocol.SkillMelee].XP - before
+	if gained != 1*meleeXPPerDamage {
+		t.Fatalf("gained %d xp for a killing blow on 1 hp, want %d — overkill should not pay",
+			gained, meleeXPPerDamage)
+	}
+}
+
+// Characters made before these skills existed must pick them up on login.
+func TestOlderCharactersGainTheNewSkills(t *testing.T) {
+	w := testWorld(t, newMem())
+	legacy := &PlayerRec{
+		ID: "old", Name: "OldHand", X: spawnX, Y: spawnY,
+		Skills: map[string]SkillState{protocol.SkillForage: {Lv: 7, XP: 300}},
+	}
+	p := w.UpsertPlayer(legacy, true)
+	for _, id := range []string{protocol.SkillMelee, protocol.SkillDefense, protocol.SkillCook} {
+		if sk, ok := p.Skills[id]; !ok || sk.Lv != 1 {
+			t.Errorf("%s missing or not level 1 on an older character: %+v", id, sk)
+		}
+	}
+	if p.Skills[protocol.SkillForage].Lv != 7 {
+		t.Error("existing skill was clobbered")
+	}
+}

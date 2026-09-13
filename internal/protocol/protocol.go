@@ -37,8 +37,10 @@ const (
 	ItemNut   = "nut"
 	ItemRoast = "roast"
 
-	SkillForage = "forage"
-	SkillCook   = "cook"
+	SkillForage  = "forage"
+	SkillCook    = "cook"
+	SkillMelee   = "melee"
+	SkillDefense = "defense"
 
 	KindBush  = "bush"
 	KindHazel = "hazel"
@@ -130,14 +132,15 @@ type ItemInfo struct {
 }
 
 type Welcome struct {
-	T        string              `json:"t"`
-	Handle   string              `json:"handle"`
-	Username string              `json:"username"`
-	TickMs   int                 `json:"tickMs"`
-	World    string              `json:"world"`
-	Map      TileMap             `json:"map"`
-	You      YouView             `json:"you"`
-	Items    map[string]ItemInfo `json:"items"`
+	T        string               `json:"t"`
+	Handle   string               `json:"handle"`
+	Username string               `json:"username"`
+	TickMs   int                  `json:"tickMs"`
+	World    string               `json:"world"`
+	Map      TileMap              `json:"map"`
+	You      YouView              `json:"you"`
+	Items    map[string]ItemInfo  `json:"items"`
+	Skills   map[string]SkillInfo `json:"skillInfo"`
 }
 
 // Auth frames are HTTP JSON, not WebSocket, but they live here so the
@@ -223,6 +226,23 @@ type Stats struct {
 	UnauthWS      uint64  `json:"unauthWS"`
 	LimitedLogin  uint64  `json:"limitedLogin"`
 	LoginFails    uint64  `json:"loginFails"`
+}
+
+// SkillInfo lets the client render skills it was not compiled with. The
+// pack had the same problem: a hardcoded list meant adding something
+// server-side silently failed to show up.
+type SkillInfo struct {
+	Name  string `json:"name"`
+	Order int    `json:"order"`
+}
+
+func SkillCatalog() map[string]SkillInfo {
+	return map[string]SkillInfo{
+		SkillForage:  {Name: "Foraging", Order: 1},
+		SkillCook:    {Name: "Cooking", Order: 2},
+		SkillMelee:   {Name: "Melee", Order: 3},
+		SkillDefense: {Name: "Defense", Order: 4},
+	}
 }
 
 func Catalog() map[string]ItemInfo {

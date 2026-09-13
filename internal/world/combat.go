@@ -1,10 +1,38 @@
 package world
 
-import "github.com/thegliffy/2007mmo/internal/protocol"
+import (
+	"fmt"
+
+	"github.com/thegliffy/2007mmo/internal/protocol"
+)
 
 const (
-	playerMaxHP     = 10
-	playerDmg       = 2
+	playerMaxHP = 10
+
+	// Melee raises the damage you deal, Defense lowers the damage you take.
+	// Both are flat and deterministic: the world has no randomness anywhere
+	// (even NPC wander is derived from the tick number), and a swing that
+	// sometimes misses would be the first thing to break that. It also
+	// means a fight's outcome can be worked out on paper, which is the
+	// property that makes the numbers below arguable.
+	//
+	//   melee  lv 1..3 -> 2   4..7 -> 3   8..11 -> 4  12..15 -> 5  16..19 -> 6  20 -> 7
+	//   defense lv 1..5 -> 0  6..11 -> 1  12..17 -> 2  18..20 -> 3
+	//
+	// Damage taken never falls below minDamageTaken, so no amount of
+	// Defense makes you safe to stand still in.
+	baseMeleeDmg     = 2
+	meleeDmgPerLevel = 4 // levels needed per extra point of damage
+	defensePerLevel  = 6 // levels needed per point of damage absorbed
+	minDamageTaken   = 1
+
+	// XP. Melee pays for damage dealt, Defense for the raw force of what
+	// hit you — raw, not what got through, or training Defense would slow
+	// down exactly as it started working.
+	meleeXPPerDamage   = 4
+	defenseXPPerDamage = 6
+
+	playerDmg       = baseMeleeDmg // starting damage, kept for tests
 	thornkinHP      = 6
 	thornkinDmg     = 1
 	bramblebackHP   = 14
@@ -158,13 +186,29 @@ func (w *World) tickCombat(p *Player) {
 	p.Action = protocol.ActionFight
 	npc.Target = p.ID
 
-	npc.HP -= playerDmg
+	// You swing first. Landing the killing blow means taking nothing back,
+	// which is why a fight you can only just win is still worth having.
+	dealt := meleeDamage(skillLevel(p, protocol.SkillMelee))
+	if dealt > npc.HP {
+		dealt = npc.HP
+	}
+	npc.HP -= dealt
+	if lv, up := addSkillXP(p.Skills, protocol.SkillMelee, dealt*meleeXPPerDamage); up {
+		w.note(p.ID, fmt.Sprintf("Melee is now level %d.", lv))
+	}
+	p.Dirty = true
 	if npc.HP <= 0 {
 		w.fellNPC(npc, p)
 		return
 	}
-	p.HP -= npc.Dmg
-	p.Dirty = true
+
+	// Defense trains on the raw force of the blow, not on what got past
+	// it, so getting better at absorbing does not slow down the learning.
+	taken := damageAfterDefense(npc.Dmg, skillLevel(p, protocol.SkillDefense))
+	if lv, up := addSkillXP(p.Skills, protocol.SkillDefense, npc.Dmg*defenseXPPerDamage); up {
+		w.note(p.ID, fmt.Sprintf("Defense is now level %d.", lv))
+	}
+	p.HP -= taken
 	if p.HP <= 0 {
 		w.defeat(p)
 	}
@@ -234,6 +278,42 @@ func (w *World) stepToward(npc *NPC, tx, ty int) {
 			return
 		}
 	}
+}
+
+// meleeDamage is what a player of this Melee level hits for.
+func meleeDamage(level int) int {
+	if level < 1 {
+		level = 1
+	}
+	return baseMeleeDmg + level/meleeDmgPerLevel
+}
+
+// defenseReduction is how much of each incoming hit a player of this
+// Defense level absorbs.
+func defenseReduction(level int) int {
+	if level < 1 {
+		level = 1
+	}
+	return level / defensePerLevel
+}
+
+// damageAfterDefense applies that absorption, never below the floor.
+func damageAfterDefense(raw, level int) int {
+	got := raw - defenseReduction(level)
+	if got < minDamageTaken {
+		got = minDamageTaken
+	}
+	return got
+}
+
+func skillLevel(p *Player, id string) int {
+	if p == nil || p.Skills == nil {
+		return 1
+	}
+	if sk, ok := p.Skills[id]; ok && sk.Lv > 0 {
+		return sk.Lv
+	}
+	return 1
 }
 
 func foodHeal(itemID string) int {

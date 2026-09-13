@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -174,8 +175,9 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 	if rec.Skills == nil {
 		rec.Skills = map[string]SkillState{}
 	}
-	ensureSkill(rec.Skills, protocol.SkillForage)
-	ensureSkill(rec.Skills, protocol.SkillCook)
+	for id := range protocol.SkillCatalog() {
+		ensureSkill(rec.Skills, id)
+	}
 	// Health survives a logout. Without this, disconnecting mid-fight was
 	// a free full heal while the beast kept its wounds.
 	hp := playerMaxHP
@@ -203,16 +205,13 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 func NewPlayerRec(id, name string) *PlayerRec {
 	full := playerMaxHP
 	return &PlayerRec{
-		ID:   id,
-		Name: SanitizeName(name),
-		X:    spawnX,
-		Y:    spawnY,
-		HP:   &full,
-		Inv:  nil,
-		Skills: map[string]SkillState{
-			protocol.SkillForage: {Lv: 1},
-			protocol.SkillCook:   {Lv: 1},
-		},
+		ID:     id,
+		Name:   SanitizeName(name),
+		X:      spawnX,
+		Y:      spawnY,
+		HP:     &full,
+		Inv:    nil,
+		Skills: newSkillSet(),
 	}
 }
 
@@ -524,6 +523,8 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 	next := recFromPlayer(p)
 	var nodeRec *NodeRec
 	var flavor string
+	var lv int
+	var leveled bool
 
 	switch action {
 	case protocol.ActionForage:
@@ -532,7 +533,7 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			return
 		}
 		next.Inv = addItem(next.Inv, want, 1)
-		addSkillXP(next.Skills, protocol.SkillForage, forageXP)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillForage, forageXP)
 		nr := *recFromNode(n)
 		nr.Remaining--
 		if nr.Remaining <= 0 {
@@ -550,21 +551,21 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			return
 		}
 		next.Inv = addItem(removeItem(next.Inv, protocol.ItemBerry, 1), protocol.ItemPulp, 1)
-		addSkillXP(next.Skills, protocol.SkillCook, millXP)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, millXP)
 		flavor = "You crush the berries on the millstone. The pulp smells of late summer."
 	case protocol.ActionCook:
 		if n.Kind != KindFire || item != protocol.ItemPulp || countItem(next.Inv, protocol.ItemPulp) < 1 {
 			return
 		}
 		next.Inv = addItem(removeItem(next.Inv, protocol.ItemPulp, 1), protocol.ItemTart, 1)
-		addSkillXP(next.Skills, protocol.SkillCook, cookXP)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, cookXP)
 		flavor = "The hearth gives you a tart, glazed and crumbling."
 	case protocol.ActionRoast:
 		if n.Kind != KindFire || item != protocol.ItemNut || countItem(next.Inv, protocol.ItemNut) < 1 {
 			return
 		}
 		next.Inv = addItem(removeItem(next.Inv, protocol.ItemNut, 1), protocol.ItemRoast, 1)
-		addSkillXP(next.Skills, protocol.SkillCook, roastXP)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, roastXP)
 		flavor = "The hazel nut pops. A little smoke, a little sweetness."
 	default:
 		return
@@ -582,9 +583,22 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 		n.Remaining = nodeRec.Remaining
 		n.Cooldown = nodeRec.Cooldown
 	}
+	if leveled {
+		flavor = strings.TrimSpace(flavor + " " + levelUpLine(action, lv))
+	}
 	if flavor != "" {
 		w.note(p.ID, flavor)
 	}
+}
+
+// levelUpLine names the skill that moved, since one action can feed
+// either Foraging or Cooking.
+func levelUpLine(action string, lv int) string {
+	name := "Foraging"
+	if action != protocol.ActionForage {
+		name = "Cooking"
+	}
+	return fmt.Sprintf("(%s is now level %d.)", name, lv)
 }
 
 func (w *World) UseItem(ctx context.Context, id, itemID string) (string, bool) {
@@ -782,11 +796,25 @@ func gatherCD(kind string) int {
 	return bushCD
 }
 
-func addSkillXP(skills map[string]SkillState, id string, xp int) {
+// addSkillXP grants xp and reports whether that crossed a level.
+func addSkillXP(skills map[string]SkillState, id string, xp int) (level int, leveled bool) {
 	sk := skills[id]
+	before := sk.Lv
 	sk.XP += xp
 	sk.Lv = LevelFromXP(sk.XP)
 	skills[id] = sk
+	return sk.Lv, sk.Lv > before
+}
+
+// newSkillSet gives a fresh character every skill the world knows about,
+// so a character made before a skill existed and one made after look the
+// same to everything downstream.
+func newSkillSet() map[string]SkillState {
+	out := make(map[string]SkillState, len(protocol.SkillCatalog()))
+	for id := range protocol.SkillCatalog() {
+		out[id] = SkillState{Lv: 1}
+	}
+	return out
 }
 
 func ensureSkill(m map[string]SkillState, id string) {

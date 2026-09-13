@@ -41,7 +41,9 @@ async def main():
     fell = False
     last_hp = None
     you_hp = None
-    for _ in range(40):
+    # The walk from the stile to the briar-woods is ~30 ticks on its own;
+    # the budget has to cover that plus the fight.
+    for _ in range(70):
         st = await read_until(ws, "state")
         you_hp = st["you"].get("hp")
         seen = [n for n in st.get("npcs") or [] if n["id"] == thorn["id"]]
@@ -54,6 +56,10 @@ async def main():
     assert fell, "thornkin did not fall (last hp=%s you=%s)" % (last_hp, you_hp)
     assert you_hp and you_hp > 0, you_hp
     print("SOUTH FIGHT PASS thornkin fell, heart", you_hp)
+    sk = st["you"].get("skills") or {}
+    for name in ("melee", "defense"):
+        if name in sk:
+            print("  %s lv %s (%s xp)" % (name, sk[name]["lv"], sk[name]["xp"]))
     await ws.close()
 
 
