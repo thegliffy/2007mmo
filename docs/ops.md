@@ -21,11 +21,39 @@ Do these from the live checkout after every merge to `main`, and whenever you wa
 | 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=equip-1` |
 | 8 | Rollback if the world is wrong | **A2** |
 
+`./scripts/deploy.sh` does 1, 2, 4 and 5 in one run. The restore drill (3) and the
+hard-refresh (7) stay yours.
+
 `/stats` and `/metrics` are **404 at the edge on purpose**. Do not curl them via `https://2007.gliffy.tv`.
 
 P1 appearance (skin / hair / tunic) lives on `players.looks`. P2 bank lives on `players.bank` / `players.bank_coins` — personal, no shared stash. Out of scope still: player trade, GE, new skills or regions.
 
 ## A1 — Deploy
+
+One command on the live host, from the Compose project directory:
+
+```bash
+./scripts/deploy.sh
+```
+
+It dumps Postgres **before** fetching anything, shows you the commits about to
+land and asks before restarting, fast-forwards `main`, rebuilds, and then waits
+for `/health`. A build that will not come up healthy is **rolled back to the
+commit that was running before** and rebuilt, so a bad deploy ends with the
+hamlet up rather than with you reading this page at midnight.
+
+Host-local edits to `docker-compose.yml` (this box publishes on 28080/25432/26379
+behind Caddy) are stashed across the pull and put back after. If they do not
+reapply cleanly the script stops with the new code checked out but **not built**,
+so the running world is untouched. The cleaner long-term fix is to move those
+ports into a `docker-compose.override.yml`, which Compose loads automatically and
+git never sees.
+
+Useful flags: `--yes` (unattended), `--no-pull` (rebuild what is checked out),
+`--no-rollback` (leave a failed deploy in place to debug). `./scripts/deploy.sh
+--help` lists the environment overrides.
+
+### By hand
 
 On the live host, in the Compose project directory:
 

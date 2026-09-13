@@ -381,6 +381,8 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Regis
 
 **Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=equip-1` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
+Deploying is one command on the live host — `./scripts/deploy.sh` dumps Postgres, fast-forwards, rebuilds, and rolls back to the previous commit if the new build will not answer `/health`. See [docs/ops.md](docs/ops.md) A1.
+
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
 Headless stand-in for two tabs (needs `pip install websockets`):
