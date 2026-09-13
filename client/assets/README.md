@@ -40,3 +40,6 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 - top: moss clay ink cream berry → `paperdoll/tunic_*.png`
 
 See `manifest.json` for full file list. WebP twins sit beside PNGs where generated.
+
+## Style pass (2026-09-13)
+Kyle: ¾ + chase camera; **2007 browser MMO** chunky/flat readability (not modern painterly). See `STYLE_PASS_2007.md`. Terrain is flat procedural for chase-cam; props/NPCs/hostiles re-exported flatter.
