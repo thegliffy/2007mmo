@@ -47,12 +47,23 @@
     return best;
   }
 
-  function resolveCanvasClick(npcs, nodes, tile) {
+  // A pile on the exact tile you clicked beats a beast that is merely
+  // nearby — you are reaching for the loot, not swinging at the thing next
+  // to it. A beast standing ON the pile still wins, because then you
+  // almost certainly meant to fight.
+  function resolveCanvasClick(npcs, nodes, tile, ground) {
     if (!tile) return null;
+    const pile = (ground || []).find((g) => g.x === tile.x && g.y === tile.y);
+    const npcOnTile = (npcs || []).some(
+      (n) => npcIsLiving(n) && n.x === tile.x && n.y === tile.y
+    );
+    if (pile && !npcOnTile) return { t: "interact", id: pile.id };
+
     const npc = pickNearestLivingNPC(npcs, tile, 1);
     if (npc) {
       return { t: npc.hostile ? "attack" : "interact", id: npc.id };
     }
+    if (pile) return { t: "interact", id: pile.id };
     const node = (nodes || []).find((n) => n.x === tile.x && n.y === tile.y);
     if (node) return { t: "interact", id: node.id };
     return { t: "move", x: tile.x, y: tile.y };

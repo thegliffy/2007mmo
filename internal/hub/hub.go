@@ -28,6 +28,7 @@ const (
 	cmdInteract
 	cmdAttack
 	cmdUse
+	cmdDrop
 	cmdChat
 	cmdLeave
 )
@@ -186,6 +187,14 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 		h.pushNoteAndState(c.client, c.playerID)
 	case cmdUse:
 		if text, ok := h.World.UseItem(ctx, c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdDrop:
+		if text, ok := h.World.DropItem(ctx, c.playerID, c.id); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
 			if ok {
 				h.metrics.AddAction()
@@ -529,6 +538,8 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdAttack, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgUse:
 			c.hub.cmds <- cmd{kind: cmdUse, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgDrop:
+			c.hub.cmds <- cmd{kind: cmdDrop, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgChat:
 			if !c.hub.limits.chat.allow(key) {
 				c.hub.metrics.AddLimited("chat")

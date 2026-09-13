@@ -91,15 +91,38 @@ Overkill does not pay: hitting a beast with 1 hp left earns experience for 1.
 | **Thornkin** | 3–8 | 1 in 16 |
 | **Brambleback** | 12–25 | 1 in 6 |
 
+Loot is **left where the beast fell**, not teleported into your pack. Click the
+sack to walk over and gather it. Right-click anything in your pack to set it
+down at your feet, and anyone can pick it up.
+
 **Coins never take a pack slot.** They live in a purse on the player record, not
 as an item, so filling your bag with brambleberries costs you nothing in coin.
 Goblin leather is an ordinary item and does take a slot; if the pack is full the
 coins still land and the hamlet says so rather than swallowing the strip.
 
-Drops go through the **same commit-before-memory path as a forage** — Postgres
-first, memory second. Loot is an item entering a pack, so a crash between the
-two would mint it twice, which is the one thing the persistence design exists to
-prevent. A store failure loses the drop; the beast still falls.
+### Piles on the ground
+
+Piles are **memory only**, and that is what keeps the no-dupe rule intact rather
+than breaking it.
+
+A pickup moves an item from the world into a pack. Commit the pack first and
+empty the pile second, and a crash in that gap leaves the item in Postgres *and*
+still on the grass — a duplicate. So the pile is emptied first and the pack
+committed second: a failure there loses the item, which is the safe direction,
+and the pile is restored if the commit merely errors rather than dying. Dropping
+runs the same way round — the pack is committed without the item before the pile
+exists.
+
+Because piles live only in memory, a crash takes every pile with it and the pack
+is whatever Postgres last agreed to, so there is nothing left to duplicate
+against. Persisting them would buy dropped items surviving a restart that loses
+nothing else, at the cost of a second transaction inside the tick and a genuinely
+hard ordering problem.
+
+Piles merge on a tile, vanish after ~2 minutes, and are capped at 64 so a bored
+player cannot grow the map forever. There is **no ownership**: whoever reaches a
+pile first takes it. With PvP out of scope and single-digit players that is a
+deliberate simplification, not an oversight.
 
 The loot roll is the only randomness in the world, and it is owned by the
 `World` rather than a global so a test can pin the seed. Nothing about crash

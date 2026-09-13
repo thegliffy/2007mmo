@@ -216,14 +216,14 @@ func (w *World) tickCombat(ctx context.Context, p *Player) {
 	}
 }
 
-func (w *World) fellNPC(ctx context.Context, npc *NPC, p *Player) {
+func (w *World) fellNPC(_ context.Context, npc *NPC, p *Player) {
 	npc.HP = 0
 	npc.Target = ""
 	npc.RespawnIn = npcRespawnTicks
 	if p != nil {
 		p.Target = ""
 		p.Action = "idle"
-		w.note(p.ID, strings.TrimSpace("The "+npc.Name+" slumps into the bracken. "+w.awardDrops(ctx, npc, p)))
+		w.note(p.ID, strings.TrimSpace("The "+npc.Name+" slumps into the bracken. "+w.spillDrops(npc)))
 	}
 	for _, other := range w.Players {
 		if other != nil && other.Target == npc.ID {
@@ -235,14 +235,10 @@ func (w *World) fellNPC(ctx context.Context, npc *NPC, p *Player) {
 	}
 }
 
-// awardDrops rolls what a fallen beast was carrying and pays it out. It
-// returns the line to show the player.
-//
-// Loot is an item entering a pack, so it goes through the same
-// commit-before-memory path as a forage: Postgres first, then memory. Do
-// it the other way and a crash between the two mints the drop twice,
-// which is the one thing the whole persistence design exists to prevent.
-func (w *World) awardDrops(ctx context.Context, npc *NPC, p *Player) string {
+// spillDrops rolls what a fallen beast was carrying and leaves it where it
+// fell. Nothing is committed here: a pile is memory-only, and the item
+// only becomes real when somebody picks it up and that write lands.
+func (w *World) spillDrops(npc *NPC) string {
 	coins := 0
 	if npc.CoinsMax > 0 {
 		lo, hi := npc.CoinsMin, npc.CoinsMax
@@ -254,48 +250,15 @@ func (w *World) awardDrops(ctx context.Context, npc *NPC, p *Player) string {
 		}
 		coins = lo + w.roll(hi-lo+1)
 	}
-	leather := npc.LeatherOdds > 0 && w.roll(npc.LeatherOdds) == 0
-
-	if coins == 0 && !leather {
+	var inv []ItemStack
+	if npc.LeatherOdds > 0 && w.roll(npc.LeatherOdds) == 0 {
+		inv = append(inv, ItemStack{ID: protocol.ItemLeather, N: 1})
+	}
+	g := w.dropPile(npc.X, npc.Y, inv, coins)
+	if g == nil {
 		return ""
 	}
-
-	next := recFromPlayer(p)
-	next.Coins += coins
-
-	packFull := false
-	if leather {
-		before := len(next.Inv)
-		next.Inv = addItem(next.Inv, protocol.ItemLeather, 1)
-		// addItem silently declines once every slot is taken; say so
-		// rather than dropping it on the floor without a word.
-		if len(next.Inv) == before && countItem(next.Inv, protocol.ItemLeather) == countItem(p.Inv, protocol.ItemLeather) {
-			packFull = true
-			leather = false
-		}
-	}
-
-	if w.Store != nil {
-		if err := w.Store.CommitAction(ctx, next, nil); err != nil {
-			// The beast still fell; it simply paid nothing. Losing a drop
-			// is the safe direction.
-			return ""
-		}
-	}
-	p.Coins = next.Coins
-	p.Inv = next.Inv
-	p.Dirty = false
-
-	switch {
-	case leather && coins > 0:
-		return fmt.Sprintf("You take %d coins and a strip of goblin leather.", coins)
-	case leather:
-		return "You take a strip of goblin leather."
-	case packFull:
-		return fmt.Sprintf("You take %d coins. Your pack is too full for the leather.", coins)
-	default:
-		return fmt.Sprintf("You take %d coins.", coins)
-	}
+	return "It leaves " + g.label(protocol.Catalog()) + " in the grass."
 }
 
 // roll returns a value in [0,n). A world without a seeded roller — one

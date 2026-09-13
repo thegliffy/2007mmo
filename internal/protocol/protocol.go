@@ -15,6 +15,7 @@ const (
 	MsgAttack   = "attack"
 	MsgUse      = "use"
 	MsgChat     = "chat"
+	MsgDrop     = "drop"
 	MsgPing     = "ping"
 
 	MsgWelcome = "welcome"
@@ -104,6 +105,15 @@ type YouView struct {
 	Target string           `json:"target,omitempty"`
 }
 
+// GroundView is a pile lying in the grass.
+type GroundView struct {
+	ID    string `json:"id"`
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	Label string `json:"label"`
+	Coins int    `json:"coins,omitempty"`
+}
+
 type NodeView struct {
 	ID    string `json:"id"`
 	Kind  string `json:"kind"`
@@ -176,6 +186,7 @@ type State struct {
 	Players []PlayerView `json:"players"`
 	NPCs    []NPCView    `json:"npcs"`
 	Nodes   []NodeView   `json:"nodes"`
+	Ground  []GroundView `json:"ground"`
 }
 
 type Chat struct {

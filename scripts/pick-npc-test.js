@@ -49,6 +49,33 @@ assert(intentNode && intentNode.t === "interact" && intentNode.id === bush.id, "
 const intentMove = pick.resolveCanvasClick([thorn], [bush], { x: 16, y: 26 });
 assert(intentMove && intentMove.t === "move" && intentMove.x === 16 && intentMove.y === 26, "far click stays move");
 
+// --- ground piles ---------------------------------------------------------
+const pile = { id: "ground-1", x: 5, y: 5 };
+
+assert(
+  pick.resolveCanvasClick([], [], { x: 5, y: 5 }, [pile]).id === "ground-1",
+  "clicking a pile picks it up"
+);
+assert(
+  pick.resolveCanvasClick([{ id: "npc-1", x: 6, y: 5, hostile: true, maxHp: 6, hp: 6 }],
+    [], { x: 5, y: 5 }, [pile]).id === "ground-1",
+  "a pile on the clicked tile beats a beast merely beside it"
+);
+assert(
+  pick.resolveCanvasClick([{ id: "npc-1", x: 5, y: 5, hostile: true, maxHp: 6, hp: 6 }],
+    [], { x: 5, y: 5 }, [pile]).t === "attack",
+  "a beast standing on the pile still means fight"
+);
+assert(
+  pick.resolveCanvasClick([], [{ id: "bush-1", x: 5, y: 5, kind: "bush" }],
+    { x: 5, y: 5 }, [pile]).id === "ground-1",
+  "a pile beats a node on the same tile"
+);
+assert(
+  pick.resolveCanvasClick([], [], { x: 9, y: 9 }, [pile]).t === "move",
+  "clicking away from a pile still walks"
+);
+
 if (failed) {
   console.error(failed + " failed");
   process.exit(1);

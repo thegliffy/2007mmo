@@ -12,6 +12,7 @@
     players: [],
     npcs: [],
     nodes: [],
+    ground: [],
     items: {},
     skillInfo: {},
     last: null,
@@ -137,6 +138,7 @@
         state.players = msg.players || [];
         state.npcs = msg.npcs || [];
         state.nodes = msg.nodes || [];
+      state.ground = msg.ground || [];
         rememberPos();
         renderSkills();
         renderVitals();
@@ -257,6 +259,15 @@
     send({ t: "use", id: slot.dataset.id });
   });
 
+  // Right-click sets one down at your feet. preventDefault so the browser
+  // menu does not appear over the hamlet.
+  $("inv").addEventListener("contextmenu", (e) => {
+    const slot = e.target.closest(".slot");
+    if (!slot || !slot.dataset.id) return;
+    e.preventDefault();
+    send({ t: "drop", id: slot.dataset.id });
+  });
+
   function tileAt(mx, my) {
     if (!state.map) return null;
     const r = canvas.getBoundingClientRect();
@@ -271,8 +282,8 @@
     if (!t) return;
     const pick = globalThis.HollowmerePick;
     const intent = pick && pick.resolveCanvasClick
-      ? pick.resolveCanvasClick(state.npcs, state.nodes, t)
-      : resolveClickFallback(state.npcs, state.nodes, t);
+      ? pick.resolveCanvasClick(state.npcs, state.nodes, t, state.ground)
+      : resolveClickFallback(state.npcs, state.nodes, t, state.ground);
     if (intent.t === "attack" && state.you) {
       state.you.target = intent.id;
       renderVitals();
@@ -282,7 +293,10 @@
 
   // Same Chebyshev ≤ 1 rule as pick-npc.js. Kept here so a missing
   // pick-npc.js (or a cached app.js-only deploy) still sends attack.
-  function resolveClickFallback(npcs, nodes, tile) {
+  function resolveClickFallback(npcs, nodes, tile, ground) {
+    const pile = (ground || []).find((g) => g.x === tile.x && g.y === tile.y);
+    const npcOnTile = (npcs || []).some((n) => n.x === tile.x && n.y === tile.y);
+    if (pile && !npcOnTile) return { t: "interact", id: pile.id };
     let best = null, bestDist = 99, bestHostile = false;
     for (const n of npcs || []) {
       if (n.maxHp > 0 && (n.hp == null ? n.maxHp : n.hp) <= 0) continue;
@@ -296,6 +310,7 @@
       }
     }
     if (best) return { t: best.hostile ? "attack" : "interact", id: best.id };
+    if (pile) return { t: "interact", id: pile.id };
     const node = (nodes || []).find((n) => n.x === tile.x && n.y === tile.y);
     if (node) return { t: "interact", id: node.id };
     return { t: "move", x: tile.x, y: tile.y };
@@ -652,6 +667,31 @@
         ctx.moveTo(px + tw / 2, py + 6);
         ctx.lineTo(px + tw * 0.28, py + th * 0.7);
         ctx.lineTo(px + tw * 0.72, py + th * 0.7);
+        ctx.fill();
+      }
+    }
+
+    for (const g of state.ground) {
+      const px = g.x * tw, py = g.y * th;
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(px + tw / 2, py + th * 0.72, tw * 0.3, th * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // A small sack; a coin glint on top when there is coin in it.
+      ctx.fillStyle = "#6b4423";
+      ctx.beginPath();
+      ctx.moveTo(px + tw * 0.32, py + th * 0.72);
+      ctx.lineTo(px + tw * 0.4, py + th * 0.44);
+      ctx.lineTo(px + tw * 0.6, py + th * 0.44);
+      ctx.lineTo(px + tw * 0.68, py + th * 0.72);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#3d2412";
+      ctx.fillRect(px + tw * 0.38, py + th * 0.4, tw * 0.24, 3);
+      if (g.coins > 0) {
+        ctx.fillStyle = "hsl(45,80%," + Math.floor(50 + 12 * flicker) + "%)";
+        ctx.beginPath();
+        ctx.arc(px + tw * 0.5, py + th * 0.55, 3, 0, Math.PI * 2);
         ctx.fill();
       }
     }

@@ -56,6 +56,7 @@ type Player struct {
 	Action       string
 	ActionTicks  int
 	ActionNode   string
+	ActionGround string
 	ActionItem   string
 	Inv          []ItemStack
 	Skills       map[string]SkillState
@@ -100,17 +101,19 @@ type NPC struct {
 }
 
 type World struct {
-	W, H    int
-	Tiles   [][]byte
-	Block   [][]bool
-	Rows    []string
-	Players map[string]*Player
-	NPCs    []*NPC
-	Nodes   map[string]*Node
-	Store   Store
-	TickN   uint64
-	LastMs  float64
-	notes   map[string]string
+	W, H      int
+	Tiles     [][]byte
+	Block     [][]bool
+	Rows      []string
+	Players   map[string]*Player
+	NPCs      []*NPC
+	Nodes     map[string]*Node
+	Ground    map[string]*GroundItem
+	Store     Store
+	TickN     uint64
+	LastMs    float64
+	groundSeq int
+	notes     map[string]string
 	// rng rolls loot. The simulation itself stays deterministic — this is
 	// only ever consulted for drops, which no crash-recovery guarantee
 	// depends on. Owned by the World rather than global so a test can pin
@@ -133,6 +136,7 @@ func New(store Store) *World {
 		Players: make(map[string]*Player),
 		NPCs:    seedNPCs(),
 		Nodes:   make(map[string]*Node),
+		Ground:  make(map[string]*GroundItem),
 		Store:   store,
 		notes:   make(map[string]string),
 		handles: make(map[string]string),
@@ -307,6 +311,10 @@ func (w *World) SetInteract(id, nodeID string) {
 		w.SetAttack(id, nodeID)
 		return
 	}
+	if w.groundByID(nodeID) != nil {
+		w.SetPickup(id, nodeID)
+		return
+	}
 	p := w.Players[id]
 	n := w.Nodes[nodeID]
 	if p == nil || n == nil {
@@ -370,6 +378,7 @@ func sanitizeChat(s string) string {
 func (w *World) Tick(ctx context.Context) {
 	w.TickN++
 	w.tickNodes(ctx)
+	w.tickGround()
 	w.tickNPCs()
 
 	ids := make([]string, 0, len(w.Players))
@@ -386,6 +395,7 @@ func (w *World) Tick(ctx context.Context) {
 		w.tickMove(p)
 		w.tickCombat(ctx, p)
 		w.tickAction(ctx, p)
+		w.tickPickup(ctx, p)
 		if w.TickN%10 == 0 && p.Dirty {
 			_ = w.Store.SavePlayer(ctx, recFromPlayer(p))
 			p.Dirty = false
@@ -744,6 +754,13 @@ func (w *World) Snapshot(id string) protocol.State {
 			Left:  n.Remaining,
 		})
 	}
+	ground := make([]protocol.GroundView, 0, len(w.Ground))
+	items := protocol.Catalog()
+	for _, g := range w.Ground {
+		ground = append(ground, protocol.GroundView{
+			ID: g.ID, X: g.X, Y: g.Y, Label: g.label(items), Coins: g.Coins,
+		})
+	}
 	return protocol.State{
 		T:       protocol.MsgState,
 		N:       w.TickN,
@@ -753,6 +770,7 @@ func (w *World) Snapshot(id string) protocol.State {
 		Players: players,
 		NPCs:    npcs,
 		Nodes:   nodes,
+		Ground:  ground,
 	}
 }
 
@@ -905,5 +923,6 @@ func cancelAction(p *Player) {
 	p.Action = "idle"
 	p.ActionTicks = 0
 	p.ActionNode = ""
+	p.ActionGround = ""
 	p.ActionItem = ""
 }

@@ -599,10 +599,24 @@ func killThornkin(t *testing.T, w *World, st Store, seed int64) *Player {
 	return p
 }
 
+// collectHere gathers whatever pile the player is able to reach, which
+// after a kill is the one the beast left behind.
+func collectHere(t *testing.T, w *World, p *Player) {
+	t.Helper()
+	for _, g := range w.Ground {
+		p.X, p.Y = g.X, g.Y
+		p.ActionGround = g.ID
+		p.HasDest = false
+		w.tickPickup(context.Background(), p)
+		return
+	}
+}
+
 // Coins are a purse, not an item: they must never consume a pack slot.
 func TestCoinsDoNotTakeAPackSlot(t *testing.T) {
 	w := testWorld(t, newMem())
 	p := killThornkin(t, w, nil, 1)
+	collectHere(t, w, p)
 	if p.Coins <= 0 {
 		t.Fatalf("no coins dropped (got %d)", p.Coins)
 	}
@@ -623,7 +637,11 @@ func TestCoinsPersist(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
 	p := killThornkin(t, w, st, 3)
+	collectHere(t, w, p)
 	want := p.Coins
+	if want == 0 {
+		t.Fatal("setup: no coins were collected")
+	}
 	w.PersistPlayer(context.Background(), "p1")
 
 	rec, err := st.LoadPlayer(context.Background(), "p1")
@@ -639,10 +657,11 @@ func TestCoinsPersist(t *testing.T) {
 	}
 }
 
-// Loot is an item entering a pack, so it must not exist in memory unless
-// the store took it. Otherwise a crash between the two mints it twice —
-// the exact thing the commit-before-memory rule prevents.
-func TestDropIsLostNotDuplicatedWhenTheStoreFails(t *testing.T) {
+// The kill itself no longer writes anything — it only leaves a pile — so
+// a failing store cannot mint loot at that moment. The dangerous write
+// moved to the pickup, and TestFailedPickupLeavesThePileIntact in
+// ground_test.go is where that ordering is pinned now.
+func TestFellingABeastWritesNothing(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
 	w.SeedLoot(5)
@@ -652,18 +671,18 @@ func TestDropIsLostNotDuplicatedWhenTheStoreFails(t *testing.T) {
 	p.X, p.Y = npc.X, npc.Y-1
 	w.SetAttack("p1", npc.ID)
 
-	st.fail = true // the store goes away mid-kill
+	st.fail = true // the store is gone for the whole fight
 	for i := 0; i < 12 && npc.Living(); i++ {
 		w.tickCombat(context.Background(), p)
 	}
 	if npc.Living() {
-		t.Fatal("setup: the thornkin did not fall")
+		t.Fatal("a failing store stopped the beast from falling")
 	}
-	if p.Coins != 0 {
-		t.Fatalf("coins appeared in memory without a commit: %d", p.Coins)
+	if p.Coins != 0 || countItem(p.Inv, protocol.ItemLeather) != 0 {
+		t.Fatal("the kill put loot in the pack without a commit")
 	}
-	if countItem(p.Inv, protocol.ItemLeather) != 0 {
-		t.Fatal("leather appeared in memory without a commit")
+	if len(w.Ground) == 0 {
+		t.Fatal("the beast left nothing behind")
 	}
 }
 
@@ -672,8 +691,11 @@ func TestLeatherIsRare(t *testing.T) {
 	drops, runs := 0, 400
 	for i := 0; i < runs; i++ {
 		w := testWorld(t, newMem())
-		p := killThornkin(t, w, nil, int64(i))
-		drops += countItem(p.Inv, protocol.ItemLeather)
+		killThornkin(t, w, nil, int64(i))
+		// Leather now lands in the pile, not the pack.
+		for _, g := range w.Ground {
+			drops += countItem(g.Inv, protocol.ItemLeather)
+		}
 	}
 	rate := float64(drops) / float64(runs)
 	odds := 1.0 / 16.0
@@ -701,11 +723,18 @@ func TestFullPackIsToldAboutTheLeather(t *testing.T) {
 	for i := 0; i < 12 && npc.Living(); i++ {
 		w.tickCombat(context.Background(), p)
 	}
+	collectHere(t, w, p)
 	if len(p.Inv) > protocol.InvSlots {
 		t.Fatalf("pack overflowed to %d slots", len(p.Inv))
 	}
 	if p.Coins <= 0 {
-		t.Fatal("coins should still be paid when the pack is full")
+		t.Fatal("coins should still be collected when the pack is full")
+	}
+	// Anything that would not fit stays where it lay rather than vanishing.
+	for _, g := range w.Ground {
+		if countItem(g.Inv, protocol.ItemLeather) > 0 {
+			return
+		}
 	}
 }
 
