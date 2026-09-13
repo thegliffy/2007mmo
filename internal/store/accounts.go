@@ -115,6 +115,40 @@ func (p *Postgres) PlayerIDForAccount(ctx context.Context, accountID string) (st
 	return id, nil
 }
 
+// AccountSummary is one row of the admin account listing.
+type AccountSummary struct {
+	ID        string
+	Username  string
+	CreatedAt time.Time
+	LastLogin *time.Time
+	PlayerID  string
+}
+
+// ListAccounts reports every account, newest first. Reporting only — it
+// deliberately does not carry password hashes.
+func (p *Postgres) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := p.pool.Query(ctx, `
+SELECT a.id, a.username, a.created_at, a.last_login_at, coalesce(pl.id,'')
+FROM accounts a
+LEFT JOIN players pl ON pl.account_id = a.id
+ORDER BY a.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AccountSummary
+	for rows.Next() {
+		var s AccountSummary
+		if err := rows.Scan(&s.ID, &s.Username, &s.CreatedAt, &s.LastLogin, &s.PlayerID); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) TouchLogin(ctx context.Context, accountID string) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

@@ -300,7 +300,6 @@ func (h *Hub) dropSocketsForSession(token string) {
 	h.mu.Unlock()
 	for _, cl := range doomed {
 		h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "You have left the hamlet."})
-		_ = cl.conn.Close()
 		cl.stop()
 	}
 }
@@ -321,7 +320,6 @@ func (h *Hub) dropSocketsForAccountExcept(accountID, keep string) {
 	h.mu.Unlock()
 	for _, cl := range doomed {
 		h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your password changed. Log in again."})
-		_ = cl.conn.Close()
 		cl.stop()
 	}
 }

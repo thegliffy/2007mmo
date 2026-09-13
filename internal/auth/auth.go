@@ -239,6 +239,92 @@ func (s *Service) ChangePassword(ctx context.Context, accountID, current, next s
 	return newToken, nil
 }
 
+// FindAccount resolves a login name to its account id and display name.
+// Returns an empty id when no such account exists.
+func (s *Service) FindAccount(ctx context.Context, rawName string) (accountID, username string, err error) {
+	key := normalizeKey(rawName)
+	if key == "" {
+		return "", "", fmt.Errorf("%w: %q", ErrBadUsername, rawName)
+	}
+	acct, err := s.accounts.AccountByUsernameKey(ctx, key)
+	if err != nil {
+		return "", "", err
+	}
+	if acct == nil {
+		return "", "", nil
+	}
+	return acct.ID, acct.Username, nil
+}
+
+// ResetPassword sets a new password without knowing the old one, for an
+// operator with access to the host. It revokes every session for the
+// account: a reset that left live sessions running would be no use for
+// the case it exists to handle.
+//
+// The password is changed first and sessions dropped second, so a Redis
+// failure leaves the account reachable with the new password rather than
+// locked out with the old one still working. The caller is told which
+// half succeeded.
+func (s *Service) ResetPassword(ctx context.Context, accountID, next string) error {
+	acct, err := s.accounts.AccountByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if acct == nil {
+		return ErrNoSession
+	}
+	if err := ValidatePassword(acct.Username, next); err != nil {
+		return err
+	}
+	if err := s.acquire(ctx); err != nil {
+		return err
+	}
+	hash, herr := hashPassword(next)
+	s.release()
+	if herr != nil {
+		return herr
+	}
+	if err := s.accounts.UpdatePasswordHash(ctx, accountID, hash); err != nil {
+		return err
+	}
+	if err := s.sessions.DeleteAccountSessions(ctx, accountID, ""); err != nil {
+		return fmt.Errorf("password changed, but sessions were not revoked: %w", err)
+	}
+	return nil
+}
+
+// RevokeSessions signs an account out everywhere without touching the
+// password, for when a cookie leaks but the password is still good.
+func (s *Service) RevokeSessions(ctx context.Context, accountID string) error {
+	return s.sessions.DeleteAccountSessions(ctx, accountID, "")
+}
+
+// GeneratePassword returns a strong temporary password from an alphabet
+// with no visually ambiguous characters, so it survives being read aloud
+// or copied by hand. It is regenerated on the vanishing chance that it
+// trips ValidatePassword.
+func GeneratePassword(username string) (string, error) {
+	const alphabet = "abcdefghijkmnpqrstuvwxyz23456789" // no l, o, 0, 1
+	for attempt := 0; attempt < 8; attempt++ {
+		b := make([]byte, 20)
+		if _, err := rand.Read(b); err != nil {
+			return "", err
+		}
+		out := make([]byte, 0, 23)
+		for i, v := range b {
+			if i > 0 && i%5 == 0 {
+				out = append(out, '-')
+			}
+			out = append(out, alphabet[int(v)%len(alphabet)])
+		}
+		pw := string(out)
+		if ValidatePassword(username, pw) == nil {
+			return pw, nil
+		}
+	}
+	return "", errors.New("auth: could not generate an acceptable password")
+}
+
 // Logout drops one session.
 func (s *Service) Logout(ctx context.Context, token string) error {
 	if token == "" {

@@ -6,13 +6,15 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/world ./cmd/world \
- && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bots ./cmd/bots
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bots ./cmd/bots \
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/admin ./cmd/admin
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates openssl wget
 WORKDIR /app
 COPY --from=build /out/world /app/world
 COPY --from=build /out/bots /app/bots
+COPY --from=build /out/admin /app/admin
 COPY client /app/web
 COPY migrations /app/migrations
 COPY deploy/entrypoint.sh /app/entrypoint.sh

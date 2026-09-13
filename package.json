@@ -12,6 +12,7 @@
     "bots:hotspot": "go run ./cmd/bots -n 200 -hotspot -duration 45s -addr ws://127.0.0.1:8080/ws",
     "stats": "curl -s http://127.0.0.1:8080/stats",
     "metrics": "curl -s http://127.0.0.1:8080/metrics",
+    "accounts": "docker compose exec world /app/admin list",
     "backup": "bash scripts/pg-backup.sh",
     "drill": "bash scripts/pg-backup-restore-drill.sh",
     "loop": "python3 scripts/week1-loop.py",

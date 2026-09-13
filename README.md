@@ -19,7 +19,7 @@ Hollowmere now has a **real front door**. There is no anonymous entry.
 5. **Change your password** from the Account panel. Doing so signs out every other session and closes its socket.
 6. **Cross-site requests are refused**: the WebSocket checks `Origin`, and the auth endpoints require a same-origin JSON post.
 
-One account owns one character. There is no password reset — no email is collected, so a lost password means a deleted row (see **[docs/ops.md](docs/ops.md)** A4).
+One account owns one character. There is no *self-service* password reset — no email is collected — so recovery is an operator running `admin reset <name>` on the host, which issues a fresh random password and signs the account out everywhere. See **[docs/ops.md](docs/ops.md)** A6.
 
 Login attempts are throttled per address *and* per account name. Behind a proxy you **must** set `HOLLOWMERE_TRUSTED_PROXIES`, or every player shares one budget — ops.md A4 covers it.
 
@@ -192,6 +192,7 @@ T3 rule: gather / mill / cook / eat **write Postgres first**, then update memory
 ```
 cmd/world          authoritative world + HTTP/WS/WSS + auth endpoints
 cmd/bots           headless load harness
+cmd/admin          operator tool: list accounts, reset a password, revoke sessions
 internal/world     tick, map, path, woodland work, pack, combat v0
 internal/store     Postgres (accounts + packs) + Redis (sessions/presence)
 internal/auth      accounts, scrypt passwords, session issue/revoke
@@ -210,7 +211,7 @@ One container ≈ one world. Grow later by running another compose project, not 
 
 Full skill tree, market, quests, PvP, multi-target combat, multi-world routing, 1k CCU claims, mobile polish, Agones/K8s, borrowed studio content.
 
-On the auth side specifically: no email, so **no password reset**; no 2FA; no account deletion from the UI; one character per account; and sessions are Redis-only, so a Redis flush logs everyone out.
+On the auth side specifically: no email, so no *self-service* password reset (operator reset only, ops.md A6); no 2FA; no account deletion from the UI; one character per account; and sessions are Redis-only, so a Redis flush logs everyone out.
 
 ## Credit
 

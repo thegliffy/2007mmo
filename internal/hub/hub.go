@@ -116,8 +116,9 @@ func (h *Hub) Run(ctx context.Context) {
 	defer t.Stop()
 	// Presence is a 30s-TTL heartbeat, not simulation state. Writing it
 	// per client per tick put N synchronous Redis round-trips on the
-	// world's critical path; it lives on its own schedule now.
-	go h.presenceLoop(ctx)
+	// world's critical path; it lives on its own schedule now, alongside
+	// the session re-check.
+	go h.heartbeatLoop(ctx)
 	var last time.Time
 	for {
 		select {
@@ -232,7 +233,6 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 
 	h.mu.Lock()
 	if old, ok := h.clients[p.ID]; ok && old != cl {
-		_ = old.conn.Close()
 		old.stop()
 	}
 	h.clients[p.ID] = cl
@@ -300,9 +300,16 @@ func (h *Hub) onLeave(ctx context.Context, id string, c *Client) {
 	}
 }
 
-// presenceLoop refreshes the Redis presence keys for connected players.
-// The TTL is 30s, so a 10s cadence keeps them alive with room to spare.
-func (h *Hub) presenceLoop(ctx context.Context) {
+// heartbeatLoop refreshes presence keys and re-checks that every open
+// socket still has a live session.
+//
+// Sessions are only verified once, at the upgrade. Without this, revoking
+// a session — an admin password reset, a logout from another device —
+// would not disturb a connection that is already established, so the
+// thing you were trying to evict keeps playing until it disconnects on
+// its own. The presence write already visits each client on this cadence,
+// so the check costs one more Redis read per client per 10s.
+func (h *Hub) heartbeatLoop(ctx context.Context) {
 	if h.Redis == nil {
 		return
 	}
@@ -314,14 +321,23 @@ func (h *Hub) presenceLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			h.mu.Lock()
-			ids := make([]string, 0, len(h.clients))
-			for id := range h.clients {
-				ids = append(ids, id)
+			live := make([]*Client, 0, len(h.clients))
+			for _, cl := range h.clients {
+				live = append(live, cl)
 			}
 			h.mu.Unlock()
-			for _, id := range ids {
-				writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-				_ = h.Redis.SetPresence(writeCtx, id)
+
+			for _, cl := range live {
+				stepCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				_, playerID, _, err := h.Auth.Resolve(stepCtx, cl.session)
+				if err != nil || playerID != cl.playerID {
+					cancel()
+					h.metrics.AddLimited("auth")
+					h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again."})
+					cl.stop()
+					continue
+				}
+				_ = h.Redis.SetPresence(stepCtx, cl.playerID)
 				cancel()
 			}
 		}
@@ -492,8 +508,26 @@ func (c *Client) writeLoop() {
 	for {
 		select {
 		case <-c.done:
+			// Flush whatever is already queued first. Eviction sends a
+			// "why" frame and then stops the client; closing straight away
+			// threw that frame away and the player just saw the socket
+			// vanish. writeLoop owns the write side, so it closes the
+			// connection itself once the close frame is out.
+			for drained := true; drained; {
+				select {
+				case msg := <-c.send:
+					_ = c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+					if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+						_ = c.conn.Close()
+						return
+					}
+				default:
+					drained = false
+				}
+			}
 			_ = c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			_ = c.conn.Close()
 			return
 		case msg := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))

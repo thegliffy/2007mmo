@@ -135,6 +135,31 @@ trusted. Caddy appends the address it saw rather than replacing the header, so
 the leftmost entry is whatever the client sent — trusting it would let anyone
 pick the address their password guesses are counted against.
 
+### A6 — Forgotten passwords (the only recovery path)
+
+No email is collected, so there is no self-service reset. Recovery is an
+operator running the admin tool on the host, which ships inside the world image:
+
+```bash
+docker compose exec world /app/admin list            # find the account
+docker compose exec world /app/admin reset Kyle      # new random password, printed once
+docker compose exec world /app/admin revoke Kyle     # sign out everywhere, password untouched
+```
+
+`reset` prints a strong random password **once** — it is not stored anywhere in
+readable form and cannot be shown again. Relay it out of band and have the
+player change it from the Account panel. Use `revoke` instead when a cookie
+leaked but the password is still good.
+
+Both sign the account out everywhere, and an already-connected player is
+**evicted within about ten seconds** — the heartbeat loop re-checks every open
+socket's session on the same cadence it writes presence. Verified: reset to
+eviction measured at 5.8s, and the player is told why rather than the socket
+simply vanishing.
+
+Anyone who can run this can already read the database, so it adds no exposure
+that `docker compose exec` did not already have.
+
 ### Deleting or renaming an account
 
 ```bash

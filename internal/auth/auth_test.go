@@ -279,3 +279,123 @@ func TestMalformedHashIsAnError(t *testing.T) {
 		}
 	}
 }
+
+// An operator reset must work without the old password, and must sign the
+// account out everywhere — a reset that left live sessions running would
+// be useless for the case it exists to handle.
+func TestAdminResetPasswordRevokesEverything(t *testing.T) {
+	svc, mem := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, first, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	_, _, _, second, err := svc.Login(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if got := mem.SessionCount(acctID); got != 2 {
+		t.Fatalf("expected 2 sessions, got %d", got)
+	}
+
+	newPW := "operator-set-this-77"
+	if err := svc.ResetPassword(ctx, acctID, newPW); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got := mem.SessionCount(acctID); got != 0 {
+		t.Fatalf("%d sessions survived the reset", got)
+	}
+	for _, tok := range []string{first, second} {
+		if _, _, _, err := svc.Resolve(ctx, tok); !errors.Is(err, ErrNoSession) {
+			t.Fatalf("a session survived the reset: %v", err)
+		}
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Kyle", goodPW); !errors.Is(err, ErrBadCredentials) {
+		t.Fatal("the old password still works after a reset")
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Kyle", newPW); err != nil {
+		t.Fatalf("the new password was rejected: %v", err)
+	}
+}
+
+func TestAdminResetRejectsWeakPassword(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, _, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.ResetPassword(ctx, acctID, "short"); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("got %v, want ErrWeakPassword", err)
+	}
+	if err := svc.ResetPassword(ctx, "no-such-account", goodPW); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("unknown account gave %v", err)
+	}
+}
+
+func TestRevokeSessionsLeavesPasswordAlone(t *testing.T) {
+	svc, mem := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, tok, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.RevokeSessions(ctx, acctID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if got := mem.SessionCount(acctID); got != 0 {
+		t.Fatalf("%d sessions survived", got)
+	}
+	if _, _, _, err := svc.Resolve(ctx, tok); !errors.Is(err, ErrNoSession) {
+		t.Fatal("session survived revoke")
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Kyle", goodPW); err != nil {
+		t.Fatalf("the password should be untouched: %v", err)
+	}
+}
+
+func TestFindAccount(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, _, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// Case-insensitive, like login.
+	gotID, gotName, err := svc.FindAccount(ctx, "kYLe")
+	if err != nil || gotID != acctID || gotName != "Kyle" {
+		t.Fatalf("find: %q %q %v", gotID, gotName, err)
+	}
+	// Absent is empty, not an error, so the CLI can say "no such account".
+	missingID, _, err := svc.FindAccount(ctx, "Nobody")
+	if err != nil || missingID != "" {
+		t.Fatalf("missing account: %q %v", missingID, err)
+	}
+	if _, _, err := svc.FindAccount(ctx, "!!"); !errors.Is(err, ErrBadUsername) {
+		t.Fatalf("invalid name gave %v", err)
+	}
+}
+
+// The generated password must be usable: strong enough to pass validation,
+// and different every time.
+func TestGeneratePassword(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 50; i++ {
+		pw, err := GeneratePassword("Kyle")
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		if err := ValidatePassword("Kyle", pw); err != nil {
+			t.Fatalf("generated password %q fails validation: %v", pw, err)
+		}
+		if seen[pw] {
+			t.Fatalf("duplicate password after %d draws", i)
+		}
+		seen[pw] = true
+		for _, ambiguous := range []string{"l", "o", "0", "1"} {
+			if strings.Contains(pw, ambiguous) {
+				t.Fatalf("password %q contains an ambiguous character %q", pw, ambiguous)
+			}
+		}
+	}
+}
