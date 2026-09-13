@@ -1,0 +1,32 @@
+# Hollowmere (2007mmo) — tick MMO PoC
+# Pair with world env:
+#   HOLLOWMERE_TRUSTED_PROXIES=<compose bridge gateway>/32,127.0.0.1/32
+#   HOLLOWMERE_ALLOWED_ORIGINS=2007.gliffy.tv
+#   HOLLOWMERE_SECURE_COOKIES=1
+
+2007.gliffy.tv {
+	encode gzip zstd
+	reverse_proxy 127.0.0.1:28080 {
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+# Why these pair up:
+#
+#   X-Forwarded-For   Caddy APPENDS the peer it saw to whatever the client
+#                     sent, so the real client is the rightmost entry.
+#                     clientIP reads it right-to-left past trusted hops;
+#                     taking the leftmost would let a client pick the
+#                     address its login attempts are counted against.
+#   X-Real-IP         set from {remote_host} above, replacing anything the
+#                     client sent. Used as a fallback when XFF is absent.
+#   X-Forwarded-Proto Caddy sets this by default; it is what tells the
+#                     world to mark the session cookie Secure (along with
+#                     HOLLOWMERE_SECURE_COOKIES=1).
+#
+# HOLLOWMERE_TRUSTED_PROXIES must contain the address Caddy reaches the
+# container from — the compose bridge gateway, not Caddy's own address:
+#   docker inspect 2007mmo-world-1 \
+#     -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'
+# If it drifts, nothing fails loudly: every player quietly shares one
+# login budget and the cookie loses Secure.
