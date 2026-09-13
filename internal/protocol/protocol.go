@@ -272,8 +272,9 @@ type Event struct {
 }
 
 type Err struct {
-	T   string `json:"t"`
-	Msg string `json:"msg"`
+	T    string `json:"t"`
+	Msg  string `json:"msg"`
+	Code string `json:"code,omitempty"`
 }
 
 type Pong struct {
@@ -311,6 +312,9 @@ type Stats struct {
 	UnauthWS      uint64  `json:"unauthWS"`
 	LimitedLogin  uint64  `json:"limitedLogin"`
 	LoginFails    uint64  `json:"loginFails"`
+	// Reconnects is hellos that found the player already in this process
+	// (a dropped socket coming back, or a second window taking over).
+	Reconnects uint64 `json:"reconnects"`
 }
 
 // SkillInfo lets the client render skills it was not compiled with. The

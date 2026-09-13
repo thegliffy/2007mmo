@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# Dump the Compose Postgres volume (canonical packs + nodes) to backups/.
+# Dump the Compose Postgres volume to backups/.
+# The dump is the whole hollowmere database:
+#   accounts          login names, scrypt hashes, roles, bans
+#   players           pack JSON, skills, hp, coins, account_id
+#   nodes             bramble / hazel / trees / copper / tin / kiln / anvil
+#   admin_actions     host-tool audit log
+#   schema_migrations
+# Loot piles and in-flight channels are memory-only and are not in the dump.
+#
 # Works against the local stack and Kyle's live 2007.gliffy.tv Compose project.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

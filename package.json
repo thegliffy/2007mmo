@@ -17,6 +17,7 @@
     "drill": "bash scripts/pg-backup-restore-drill.sh",
     "loop": "python3 scripts/week1-loop.py",
     "metal": "python3 scripts/metal-loop.py",
-    "fight": "python3 scripts/south-fight.py"
+    "fight": "python3 scripts/south-fight.py",
+    "chaos": "python3 scripts/nodupe-chaos.py"
   }
 }

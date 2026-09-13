@@ -7,16 +7,20 @@
 2007.gliffy.tv {
 	encode gzip zstd
 
-	# /stats and /metrics report tick timings, player counts, and the
-	# loginFails / limitedLogin counters — the last of which would tell
-	# anyone guessing passwords whether the throttle is biting. Not served
-	# publicly. Read them on the host instead, straight past Caddy:
+	# /stats and /metrics report tick timings, player counts, reconnects,
+	# and the loginFails / limitedLogin counters — the last of which would
+	# tell anyone guessing passwords whether the throttle is biting. Not
+	# served publicly. Scrape on the host, straight past Caddy:
 	#   curl -s http://127.0.0.1:28080/stats
+	#   curl -s http://127.0.0.1:28080/metrics
 	@ops path /stats /metrics
 	respond @ops 404
 
 	reverse_proxy 127.0.0.1:28080 {
 		header_up X-Real-IP {remote_host}
+		# WebSockets: flush immediately. Buffering makes a live tab look
+		# like it dropped when it is only delayed.
+		flush_interval -1
 	}
 }
 

@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -255,6 +256,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 	}
 	id := cl.playerID
 
+	alreadyHere := h.World.Players[id] != nil
 	p := h.World.Players[id]
 	if p == nil {
 		rec, err := h.World.Store.LoadPlayer(ctx, id)
@@ -290,8 +292,18 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		_ = h.Redis.SetPresence(ctx, p.ID)
 	}
 
+	replaced := false
 	h.mu.Lock()
 	if old, ok := h.clients[p.ID]; ok && old != cl {
+		replaced = true
+		// Tell the old tab to stop retrying. Without this, a second
+		// window (or a flapping reconnect) kicks the first, which
+		// reconnects, which kicks the second — forever.
+		h.sendJSON(old, protocol.Err{
+			T:    protocol.MsgErr,
+			Msg:  "This session opened in another window.",
+			Code: "replaced",
+		})
 		old.stop()
 	}
 	h.clients[p.ID] = cl
@@ -299,6 +311,9 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 	h.mu.Unlock()
 
 	h.metrics.AddJoin()
+	if replaced || alreadyHere {
+		h.metrics.AddReconnect()
+	}
 	h.sendJSON(cl, protocol.Welcome{
 		T:        protocol.MsgWelcome,
 		Handle:   handle,
@@ -415,9 +430,24 @@ func (h *Hub) heartbeatLoop(ctx context.Context) {
 				_, playerID, _, err := h.Auth.Resolve(stepCtx, cl.session)
 				if err != nil || playerID != cl.playerID {
 					cancel()
-					h.metrics.AddLimited("auth")
-					h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again."})
-					cl.stop()
+					// Only evict on a definitive dead session. A Redis
+					// blip used to kick every socket every 10s — the
+					// live tab then reconnects, looks fine, and flaps.
+					if playerID != cl.playerID && playerID != "" {
+						h.metrics.AddLimited("auth")
+						h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again.", Code: "session"})
+						cl.stop()
+						continue
+					}
+					if sessionDead(err) {
+						h.metrics.AddLimited("auth")
+						h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again.", Code: "session"})
+						cl.stop()
+						continue
+					}
+					if err != nil {
+						log.Printf("heartbeat: resolve %s: %v (keeping socket)", cl.username, err)
+					}
 					continue
 				}
 				_ = h.Redis.SetPresence(stepCtx, cl.playerID)
@@ -640,11 +670,13 @@ func (c *Client) writeLoop() {
 		case msg := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				_ = c.conn.Close()
 				return
 			}
 		case <-ping.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				_ = c.conn.Close()
 				return
 			}
 		}
@@ -713,6 +745,7 @@ func (h *Hub) stats() protocol.Stats {
 		UnauthWS:      la,
 		LimitedLogin:  ll,
 		LoginFails:    lf,
+		Reconnects:    h.metrics.Reconnects(),
 	}
 }
 
@@ -737,9 +770,21 @@ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP hollowmere_loop_p50_ms Full cycle, median.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_loop_p50_ms gauge\n")
 	fmt.Fprintf(w, "hollowmere_loop_p50_ms %.4f\n", s.LoopP50Ms)
+	fmt.Fprintf(w, "# HELP hollowmere_loop_max_ms Full cycle, max in the rolling window.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_loop_max_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_loop_max_ms %.4f\n", s.LoopMaxMs)
+	fmt.Fprintf(w, "# HELP hollowmere_tick_lag_p50_ms How late a tick fired against its schedule, median.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_tick_lag_p50_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_tick_lag_p50_ms %.4f\n", s.LagP50Ms)
 	fmt.Fprintf(w, "# HELP hollowmere_tick_lag_p99_ms How late a tick fired against its schedule.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_tick_lag_p99_ms gauge\n")
 	fmt.Fprintf(w, "hollowmere_tick_lag_p99_ms %.4f\n", s.LagP99Ms)
+	fmt.Fprintf(w, "# HELP hollowmere_tick_lag_max_ms How late a tick fired against its schedule, max.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_tick_lag_max_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_tick_lag_max_ms %.4f\n", s.LagMaxMs)
+	fmt.Fprintf(w, "# HELP hollowmere_tick_samples Samples in the rolling tick window (p50/p99 are meaningless at 0).\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_tick_samples gauge\n")
+	fmt.Fprintf(w, "hollowmere_tick_samples %d\n", s.Samples)
 	fmt.Fprintf(w, "# HELP hollowmere_frames_dropped_total State frames discarded because a client was not draining.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_frames_dropped_total counter\n")
 	fmt.Fprintf(w, "hollowmere_frames_dropped_total %d\n", s.FramesDropped)
@@ -755,6 +800,9 @@ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP hollowmere_joins_total Successful hamlet joins.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_joins_total counter\n")
 	fmt.Fprintf(w, "hollowmere_joins_total %d\n", s.Joins)
+	fmt.Fprintf(w, "# HELP hollowmere_reconnects_total Hellos that found the player already in this process.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_reconnects_total counter\n")
+	fmt.Fprintf(w, "hollowmere_reconnects_total %d\n", s.Reconnects)
 	fmt.Fprintf(w, "# HELP hollowmere_chats_total Public chat lines accepted.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_chats_total counter\n")
 	fmt.Fprintf(w, "hollowmere_chats_total %d\n", s.Chats)
@@ -768,6 +816,7 @@ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"chat\"} %d\n", s.LimitedChat)
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"conn\"} %d\n", s.LimitedConn)
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"login\"} %d\n", s.LimitedLogin)
+	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"auth\"} %d\n", s.UnauthWS)
 	fmt.Fprintf(w, "# HELP hollowmere_unauthenticated_ws_total WebSocket upgrades refused for a missing or dead session.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_unauthenticated_ws_total counter\n")
 	fmt.Fprintf(w, "hollowmere_unauthenticated_ws_total %d\n", s.UnauthWS)
@@ -803,6 +852,7 @@ type Metrics struct {
 	limitedAuth  uint64
 	limitedLogin uint64
 	loginFails   uint64
+	reconnects   uint64
 }
 
 func NewMetrics() *Metrics {
@@ -925,6 +975,24 @@ func (m *Metrics) AddJoin() {
 	m.mu.Lock()
 	m.joins++
 	m.mu.Unlock()
+}
+
+func (m *Metrics) AddReconnect() {
+	m.mu.Lock()
+	m.reconnects++
+	m.mu.Unlock()
+}
+
+func (m *Metrics) Reconnects() uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.reconnects
+}
+
+// sessionDead reports whether Resolve failed because the cookie is
+// actually gone or the account is banned — not because Redis hiccuped.
+func sessionDead(err error) bool {
+	return errors.Is(err, auth.ErrNoSession) || errors.Is(err, auth.ErrBanned)
 }
 
 func (m *Metrics) AddChat() {
