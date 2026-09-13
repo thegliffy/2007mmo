@@ -8,7 +8,7 @@ Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” 
 
 by **thegliffy**
 
-**Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). Character creator and bank are not in this cut.
+**Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). Bank is not in this cut.
 
 ## Accounts and login
 
@@ -20,6 +20,7 @@ Hollowmere now has a **real front door**. There is no anonymous entry.
 4. **Peers see an opaque handle**, not your player id. The handle is fresh every time you walk in, so nobody can follow you across sessions by remembering it.
 5. **One live session.** Logging in (or joining with a valid cookie) signs that account out everywhere else — other tabs, other devices, leftover Redis tokens. The old socket is told `Signed in somewhere else` and does not retry. Changing your password from the Account panel does the same.
 6. **Cross-site requests are refused**: the WebSocket checks `Origin`, and the auth endpoints require a same-origin JSON post.
+7. **Looks before the stile.** A new account (or a returning one with no face) stops at a wood-and-parchment creator: skin, hair style, hair colour, tunic. The name is the one already claimed at register. The first successful carve sticks — spam-clicks do not mint a second row. Peers see those colours in the same AOI snapshot that carries names, and a relog keeps them. No class pick, no stats; you still train by doing.
 
 One account owns one character. There is no *self-service* password reset — no email is collected — so recovery is an operator running `admin reset <name>` on the host, which issues a fresh random password and signs the account out everywhere. See **[docs/ops.md](docs/ops.md)** A6.
 
@@ -34,7 +35,7 @@ This tree keeps Week 1 (woodland loop, wood HUD, ops honesty) and adds the next 
 3. **Combat v0.** Tick-authoritative **1vNPC**. Click **near** a beast (Chebyshev ≤ 1 of the clicked tile) or send `attack` — you walk adjacent, then both sides swing once per 600ms tick. Heart and target HP show on the parchment HUD and over the sprites. A Thornkin is a win; the Brambleback can drop you.
 4. **Soft defeat.** HP to 0 wakes you at the stile with an empty threat and the same pack. Fallen beasts respawn in the clearing after a short wait. Hearth tarts and roast hazel mend a little heart.
 
-**Out of scope (still):** PvP, multi-target, character creator, skill sprawl, market, multi-world, Kubernetes.
+**Out of scope (still):** PvP, multi-target, recustomize NPC / cosmetics shop, full paperdoll equipment, skill sprawl, market, multi-world, Kubernetes.
 
 ## Phase 2 Week 1
 

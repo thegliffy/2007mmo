@@ -12,6 +12,7 @@ import (
 
 	"github.com/thegliffy/2007mmo/internal/auth"
 	"github.com/thegliffy/2007mmo/internal/protocol"
+	"github.com/thegliffy/2007mmo/internal/world"
 )
 
 // maxAuthBody caps a credential post. Passwords are capped at 128 bytes,
@@ -29,6 +30,7 @@ func (h *Hub) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/logout", h.ServeLogout)
 	mux.HandleFunc("/auth/me", h.ServeMe)
 	mux.HandleFunc("/auth/password", h.ServePassword)
+	mux.HandleFunc("/auth/looks", h.ServeLooks)
 }
 
 // sessionToken reads the login cookie.
@@ -176,6 +178,8 @@ func clientAuthError(w http.ResponseWriter, err error) {
 		authFail(w, http.StatusForbidden, auth.ErrBanned.Error())
 	case errors.Is(err, auth.ErrBadUsername), errors.Is(err, auth.ErrWeakPassword):
 		authFail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, protocol.ErrBadLooks):
+		authFail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, auth.ErrNoSession):
 		authFail(w, http.StatusUnauthorized, "log in first")
 	default:
@@ -192,7 +196,7 @@ func (h *Hub) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	if !h.authThrottle(w, r, req.Username) {
 		return
 	}
-	_, _, username, token, err := h.Auth.Register(r.Context(), req.Username, req.Password)
+	_, playerID, username, token, err := h.Auth.Register(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if isCredentialFailure(err) {
 			h.metrics.AddLoginFail()
@@ -201,7 +205,7 @@ func (h *Hub) ServeRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setSessionCookie(w, r, token)
-	writeAuthJSON(w, http.StatusCreated, protocol.AuthResponse{Username: username, World: protocol.WorldName})
+	writeAuthJSON(w, http.StatusCreated, h.authOK(r.Context(), username, playerID))
 }
 
 func (h *Hub) ServeLogin(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +216,7 @@ func (h *Hub) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	if !h.authThrottle(w, r, req.Username) {
 		return
 	}
-	accountID, _, username, token, err := h.Auth.Login(r.Context(), req.Username, req.Password)
+	accountID, playerID, username, token, err := h.Auth.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if isCredentialFailure(err) {
 			h.metrics.AddLoginFail()
@@ -224,7 +228,7 @@ func (h *Hub) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// still holding one so the old tab does not sit reconnecting.
 	h.takeSoleSession(r.Context(), accountID, token)
 	h.setSessionCookie(w, r, token)
-	writeAuthJSON(w, http.StatusOK, protocol.AuthResponse{Username: username, World: protocol.WorldName})
+	writeAuthJSON(w, http.StatusOK, h.authOK(r.Context(), username, playerID))
 }
 
 func (h *Hub) ServeLogout(w http.ResponseWriter, r *http.Request) {
@@ -255,13 +259,13 @@ func (h *Hub) ServeMe(w http.ResponseWriter, r *http.Request) {
 		authFail(w, http.StatusMethodNotAllowed, "get only")
 		return
 	}
-	_, _, username, err := h.Auth.Resolve(r.Context(), sessionToken(r))
+	_, playerID, username, err := h.Auth.Resolve(r.Context(), sessionToken(r))
 	if err != nil {
 		h.clearSessionCookie(w, r)
 		authFail(w, http.StatusUnauthorized, "log in first")
 		return
 	}
-	writeAuthJSON(w, http.StatusOK, protocol.AuthResponse{Username: username, World: protocol.WorldName})
+	writeAuthJSON(w, http.StatusOK, h.authOK(r.Context(), username, playerID))
 }
 
 func (h *Hub) ServePassword(w http.ResponseWriter, r *http.Request) {
@@ -365,5 +369,97 @@ func (h *Hub) takeSoleSession(ctx context.Context, accountID, keep string) {
 	for _, cl := range doomed {
 		h.sendJSON(cl, replacedErr())
 		cl.stop()
+	}
+}
+
+// authOK is the shared login/register/me body: the display name plus
+// whether the creator still stands between them and the stile.
+func (h *Hub) authOK(ctx context.Context, username, playerID string) protocol.AuthResponse {
+	out := protocol.AuthResponse{Username: username, World: protocol.WorldName}
+	if looks := h.looksFor(ctx, playerID); looks != nil {
+		out.Looks = looks
+	} else {
+		out.NeedsLooks = true
+	}
+	return out
+}
+
+func (h *Hub) looksFor(ctx context.Context, playerID string) *protocol.Looks {
+	if playerID == "" || h.World == nil || h.World.Store == nil {
+		return nil
+	}
+	rec, err := h.World.Store.LoadPlayer(ctx, playerID)
+	if err != nil || rec == nil || !rec.Looks.Set() {
+		return nil
+	}
+	l := rec.Looks
+	return &l
+}
+
+// ServeLooks is the appearance creator. GET returns the catalog and the
+// current face (if any). POST writes the first face and is a no-op after
+// that — one character, one create, spam-clicks do not mint a second row.
+func (h *Hub) ServeLooks(w http.ResponseWriter, r *http.Request) {
+	_, playerID, username, err := h.Auth.Resolve(r.Context(), sessionToken(r))
+	if err != nil {
+		authFail(w, http.StatusUnauthorized, "log in first")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		info := protocol.LooksInfo{
+			Username:   username,
+			World:      protocol.WorldName,
+			Catalog:    protocol.AppearanceCatalog(),
+			Looks:      h.looksFor(r.Context(), playerID),
+			NeedsLooks: true,
+		}
+		if info.Looks != nil {
+			info.NeedsLooks = false
+		}
+		writeAuthJSON(w, http.StatusOK, info)
+	case http.MethodPost:
+		if !h.sameOrigin(r) {
+			authFail(w, http.StatusForbidden, "that request did not come from Hollowmere")
+			return
+		}
+		var req protocol.Looks
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBody))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			authFail(w, http.StatusBadRequest, "that was not a well-formed request")
+			return
+		}
+		looks, err := protocol.ParseLooks(req)
+		if err != nil {
+			clientAuthError(w, err)
+			return
+		}
+		rec := world.NewPlayerRec(playerID, username)
+		stuck, wrote, err := world.ApplyLooksFirst(r.Context(), h.World.Store, rec, looks)
+		if err != nil {
+			log.Printf("auth: looks: %v", err)
+			authFail(w, http.StatusInternalServerError, "the hamlet hiccuped. Try again.")
+			return
+		}
+		// Paint the live figure if they somehow already walked in.
+		select {
+		case h.cmds <- cmd{kind: cmdLooks, playerID: playerID, looks: stuck}:
+		default:
+		}
+		code := http.StatusOK
+		if wrote {
+			code = http.StatusCreated
+		}
+		writeAuthJSON(w, code, protocol.LooksInfo{
+			Username: username,
+			World:    protocol.WorldName,
+			Looks:    &stuck,
+			Catalog:  protocol.AppearanceCatalog(),
+		})
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		authFail(w, http.StatusMethodNotAllowed, "get or post only")
 	}
 }

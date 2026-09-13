@@ -31,6 +31,8 @@
     username: null,
     authed: false,
     stopped: false,
+    looksCatalog: null,
+    draftLooks: null,
   };
 
   // The ?ws= override stays for local development only. On any other
@@ -153,8 +155,10 @@
       state.nodes = state.baseNodes.map((n) => ({ ...n, ready: true }));
         state.handle = msg.handle || null;
         state.username = msg.username || null;
+        if (msg.looksCatalog) state.looksCatalog = msg.looksCatalog;
         $("acct-name").textContent = state.username || "";
         $("gate").classList.add("hidden");
+        $("looks").classList.add("hidden");
         renderSkills();
         renderVitals();
         renderInv();
@@ -539,7 +543,15 @@
     }
     let data = {};
     try { data = await res.json(); } catch { /* empty body is fine */ }
-    return { ok: res.ok, status: res.status, error: data.error, username: data.username };
+    return {
+      ok: res.ok,
+      status: res.status,
+      error: data.error,
+      username: data.username,
+      looks: data.looks || null,
+      needsLooks: !!data.needsLooks,
+      catalog: data.catalog || data.looksCatalog || null,
+    };
   }
 
   function showGate(message, kind) {
@@ -549,6 +561,7 @@
     state.ws = null;
     state.you = null;
     state.map = null;
+    $("looks").classList.add("hidden");
     $("gate").classList.remove("hidden");
     selectTab("login");
     // selectTab clears the message, so set it afterwards.
@@ -587,6 +600,7 @@
     state.stopped = false;
     state.reconnects = 0;
     $("acct-name").textContent = state.username || "";
+    $("looks").classList.add("hidden");
     authMsg("");
     connect();
   }
@@ -627,7 +641,7 @@
       return;
     }
     $("login-pass").value = "";
-    enterWorld(r.username);
+    afterAuth(r);
   });
 
   $("form-register").addEventListener("submit", async (e) => {
@@ -649,7 +663,7 @@
     }
     $("reg-pass").value = "";
     $("reg-pass2").value = "";
-    enterWorld(r.username);
+    afterAuth(r);
   });
 
   $("do-logout").addEventListener("click", async () => {
@@ -695,10 +709,171 @@
     acctMsg("Password changed. Other sessions were signed out.", "good");
   });
 
-  // Boot: a live cookie walks straight in, otherwise the portal shows.
+  function afterAuth(r) {
+    state.username = r.username || state.username;
+    $("acct-name").textContent = state.username || "";
+    if (r.catalog) state.looksCatalog = r.catalog;
+    if (r.needsLooks || !r.looks) {
+      showCreator(state.username);
+      return;
+    }
+    enterWorld(state.username);
+  }
+
+  function looksMsg(text, kind) {
+    const el = $("looks-msg");
+    el.textContent = text || "";
+    el.className = "authmsg" + (kind ? " " + kind : "");
+  }
+
+  function showCreator(username) {
+    state.username = username || state.username;
+    state.authed = true;
+    state.stopped = true;
+    if (state.ws) { try { state.ws.close(); } catch { /* already gone */ } }
+    state.ws = null;
+    $("gate").classList.add("hidden");
+    $("looks").classList.remove("hidden");
+    $("looks-name").textContent = state.username || "";
+    looksMsg("");
+    loadLooksDesk();
+  }
+
+  const FALLBACK_CATALOG = {
+    skin: [
+      { id: "fair", name: "Fair", color: "#f0d2b0" },
+      { id: "tan", name: "Tan", color: "#d4a574" },
+      { id: "olive", name: "Olive", color: "#b08a58" },
+      { id: "deep", name: "Deep", color: "#6b4226" },
+    ],
+    hair: [
+      { id: "cropped", name: "Cropped" },
+      { id: "short", name: "Short" },
+      { id: "tied", name: "Tied" },
+      { id: "long", name: "Long" },
+    ],
+    hairColor: [
+      { id: "umber", name: "Umber", color: "#3d2412" },
+      { id: "straw", name: "Straw", color: "#d4b46a" },
+      { id: "soot", name: "Soot", color: "#1c140c" },
+      { id: "russet", name: "Russet", color: "#8a3a1c" },
+      { id: "snow", name: "Snow", color: "#e8e0d0" },
+    ],
+    top: [
+      { id: "moss", name: "Moss", color: "#4a6a32" },
+      { id: "clay", name: "Clay", color: "#a85a32" },
+      { id: "ink", name: "Ink", color: "#2a3a5a" },
+      { id: "cream", name: "Cream", color: "#e8d4a8" },
+      { id: "berry", name: "Berry", color: "#7a2a40" },
+    ],
+  };
+
+  function looksCatalog() {
+    return state.looksCatalog || FALLBACK_CATALOG;
+  }
+
+  function colorOf(axis, id) {
+    const opts = looksCatalog()[axis] || [];
+    const hit = opts.find((o) => o.id === id);
+    return (hit && hit.color) || "";
+  }
+
+  function defaultDraft() {
+    return { skin: "tan", hair: "short", hairColor: "umber", top: "moss" };
+  }
+
+  function renderLooksPickers() {
+    const cat = looksCatalog();
+    const draft = state.draftLooks || defaultDraft();
+    const axes = [
+      { key: "skin", label: "Skin" },
+      { key: "hair", label: "Hair" },
+      { key: "hairColor", label: "Hair colour" },
+      { key: "top", label: "Tunic" },
+    ];
+    const host = $("looks-pickers");
+    host.innerHTML = "";
+    for (const axis of axes) {
+      const set = document.createElement("fieldset");
+      set.className = "looks-axis";
+      const legend = document.createElement("legend");
+      legend.textContent = axis.label;
+      set.appendChild(legend);
+      const row = document.createElement("div");
+      row.className = "swatches";
+      for (const opt of cat[axis.key] || []) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.axis = axis.key;
+        btn.dataset.id = opt.id;
+        btn.title = opt.name;
+        if (opt.color) {
+          btn.className = "swatch" + (draft[axis.key] === opt.id ? " on" : "");
+          btn.style.background = opt.color;
+          btn.setAttribute("aria-label", opt.name);
+        } else {
+          btn.className = "stylepick" + (draft[axis.key] === opt.id ? " on" : "");
+          btn.textContent = opt.name;
+        }
+        btn.addEventListener("click", () => {
+          state.draftLooks = Object.assign({}, state.draftLooks || defaultDraft(), { [axis.key]: opt.id });
+          renderLooksPickers();
+          paintLooksPreview();
+        });
+        row.appendChild(btn);
+      }
+      set.appendChild(row);
+      host.appendChild(set);
+    }
+  }
+
+  function paintLooksPreview() {
+    const canvas = $("looks-preview");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawPaperdoll(ctx, canvas.width / 2, canvas.height * 0.62, 22, state.draftLooks || defaultDraft(), true);
+    ctx.fillStyle = "#3d2412";
+    ctx.font = "14px Georgia";
+    ctx.textAlign = "center";
+    ctx.fillText(state.username || "Wanderer", canvas.width / 2, 28);
+  }
+
+  async function loadLooksDesk() {
+    state.draftLooks = defaultDraft();
+    const r = await authFetch("/auth/looks");
+    if (r.ok && r.catalog) state.looksCatalog = r.catalog;
+    if (r.ok && r.looks) state.draftLooks = r.looks;
+    renderLooksPickers();
+    paintLooksPreview();
+  }
+
+  $("form-looks").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const looks = state.draftLooks || defaultDraft();
+    busy(form, true);
+    looksMsg("Carving…");
+    const r = await authFetch("/auth/looks", looks);
+    busy(form, false);
+    if (!r.ok) {
+      looksMsg(r.error || "That did not take.", "bad");
+      return;
+    }
+    $("looks").classList.add("hidden");
+    enterWorld(state.username);
+  });
+
+  // Boot: a live cookie with a face walks straight in. A live cookie
+  // without one stops at the creator. No cookie, the stile.
   (async () => {
-    if (await checkSession()) {
+    const r = await authFetch("/auth/me");
+    if (r.status === 0) {
       enterWorld(state.username);
+      return;
+    }
+    if (r.ok) {
+      afterAuth(r);
     } else {
       $("gate").classList.remove("hidden");
       selectTab("login");
@@ -710,11 +885,6 @@
   }, 15000);
 
   function lerp(a, b, u) { return a + (b - a) * u; }
-  function hashHue(s) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return Math.abs(h) % 360;
-  }
 
   function posOf(id, x, y, u) {
     const p = state.prevPos[id];
@@ -961,7 +1131,6 @@
       const px = p.x * tw + tw / 2;
       const py = p.y * th + th * 0.62;
       const hostile = f.kind === "npc" && e.hostile;
-      const hue = hostile ? 8 : f.kind === "npc" ? 35 : hashHue(e.name || e.id);
       if (e.id && e.id === targetId) {
         ctx.strokeStyle = "rgba(190,50,30,0.85)";
         ctx.lineWidth = 2;
@@ -969,30 +1138,35 @@
         ctx.ellipse(px, py + 10, 12, 6, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
-      ctx.beginPath();
-      ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = f.kind === "you" ? "hsl(" + hue + ",70%,42%)" : "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
-      ctx.fillRect(px - 7, py - 8, 14, 16);
-      if (hostile) {
-        ctx.fillStyle = "#5a2a18";
-        ctx.fillRect(px - 3, py - 16, 6, 5);
+      if (f.kind === "npc") {
+        const hue = hostile ? 8 : 35;
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.beginPath();
+        ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
+        ctx.fillRect(px - 7, py - 8, 14, 16);
+        if (hostile) {
+          ctx.fillStyle = "#5a2a18";
+          ctx.fillRect(px - 3, py - 16, 6, 5);
+        }
+        ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
+        ctx.beginPath();
+        ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        drawPaperdoll(ctx, px, py, 8, e.looks || defaultDraft(), f.kind === "you");
       }
-      ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
-      ctx.beginPath();
-      ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
-      ctx.fill();
       ctx.fillStyle = f.kind === "you" ? "#fff4b0" : hostile ? "#f0c8a0" : "#f3e2c7";
       ctx.font = "11px Trebuchet MS";
       ctx.textAlign = "center";
-      ctx.fillText(e.name || "?", px, py - 20);
+      ctx.fillText(e.name || "?", px, py - 22);
       if (e.maxHp > 0 && (f.kind === "you" || hostile)) {
         const hp = e.hp == null ? e.maxHp : e.hp;
         const bw = 18;
         const bh = 3;
         const bx = px - bw / 2;
-        const by = py - 32;
+        const by = py - 34;
         ctx.fillStyle = "#2a160c";
         ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
         ctx.fillStyle = "#5a381c";
@@ -1005,6 +1179,71 @@
         ctx.fillText(actionVoice(e.action), px, py + 22);
       }
     }
+  }
+
+  function shadeHex(hex, amt) {
+    const n = String(hex || "").replace("#", "");
+    if (n.length < 6) return hex;
+    const k = (i) => Math.max(0, Math.min(255, Math.round(parseInt(n.slice(i, i + 2), 16) * amt)));
+    const h = (v) => v.toString(16).padStart(2, "0");
+    return "#" + h(k(0)) + h(k(2)) + h(k(4));
+  }
+
+  function drawHair(ctx, hx, hy, r, style, color) {
+    ctx.fillStyle = color;
+    if (style === "cropped") {
+      ctx.beginPath();
+      ctx.ellipse(hx, hy - r * 0.55, r * 0.95, r * 0.38, 0, Math.PI, 0);
+      ctx.fill();
+      return;
+    }
+    ctx.beginPath();
+    ctx.arc(hx, hy - r * 0.15, r * 1.05, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.fill();
+    if (style === "tied") {
+      ctx.beginPath();
+      ctx.arc(hx + r * 0.85, hy - r * 0.15, r * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (style === "long") {
+      ctx.fillRect(hx - r * 1.05, hy - r * 0.1, r * 0.42, r * 1.35);
+      ctx.fillRect(hx + r * 0.63, hy - r * 0.1, r * 0.42, r * 1.35);
+    }
+  }
+
+  // Stylized paperdoll: coloured blob with hair and a tunic until real
+  // 3D assets exist. Same function paints the creator preview and AOI.
+  function drawPaperdoll(ctx, cx, cy, s, looks, highlight) {
+    const l = looks || defaultDraft();
+    const skin = colorOf("skin", l.skin) || "#d4a574";
+    const top = colorOf("top", l.top) || "#4a6a32";
+    const hair = colorOf("hairColor", l.hairColor) || "#3d2412";
+    const unit = s / 8;
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 10 * unit, 9 * unit, 4 * unit, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = shadeHex(skin, 0.78);
+    ctx.fillRect(cx - 5 * unit, cy + 2 * unit, 4 * unit, 8 * unit);
+    ctx.fillRect(cx + 1 * unit, cy + 2 * unit, 4 * unit, 8 * unit);
+    ctx.fillStyle = top;
+    ctx.fillRect(cx - 7 * unit, cy - 8 * unit, 14 * unit, 13 * unit);
+    if (highlight) {
+      ctx.strokeStyle = "rgba(255,244,176,0.7)";
+      ctx.lineWidth = Math.max(1, unit);
+      ctx.strokeRect(cx - 7 * unit, cy - 8 * unit, 14 * unit, 13 * unit);
+    }
+    const hx = cx;
+    const hy = cy - 12 * unit;
+    const hr = 6 * unit;
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+    ctx.fill();
+    drawHair(ctx, hx, hy, hr, l.hair || "short", hair);
+    ctx.fillStyle = "#2a160c";
+    ctx.fillRect(hx - 2.4 * unit, hy - 1.2 * unit, 1.4 * unit, 1.4 * unit);
+    ctx.fillRect(hx + 1 * unit, hy - 1.2 * unit, 1.4 * unit, 1.4 * unit);
   }
 
   function actionVoice(action) {

@@ -1,6 +1,10 @@
 package world
 
-import "context"
+import (
+	"context"
+
+	"github.com/thegliffy/2007mmo/internal/protocol"
+)
 
 // Store is the canonical persistence boundary. Item mutations must
 // commit here before in-memory inventory changes (T3: no dupe on crash).
@@ -23,6 +27,8 @@ type PlayerRec struct {
 	HP *int
 	// Coins live outside Inv on purpose: a purse costs no pack slot.
 	Coins int
+	// Looks is empty until the creator writes it. Relog must keep it.
+	Looks protocol.Looks
 }
 
 type NodeRec struct {
@@ -41,7 +47,7 @@ func recFromPlayer(p *Player) *PlayerRec {
 	}
 	hp := p.HP
 	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y,
-		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins}
+		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins, Looks: p.Looks}
 }
 
 func recFromNode(n *Node) *NodeRec {

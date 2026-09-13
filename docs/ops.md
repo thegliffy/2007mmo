@@ -18,12 +18,12 @@ Do these from the live checkout after every merge to `main`, and whenever you wa
 | 4 | Pull and rebuild | see **A1** |
 | 5 | Health (public) | `curl -sf https://2007.gliffy.tv/health` |
 | 6 | Stats (on the box only) | `curl -s http://127.0.0.1:28080/stats` — watch `lagP99Ms`, `online`, `ws`, `reconnects` |
-| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=…` |
+| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=p1-looks` |
 | 8 | Rollback if the world is wrong | **A2** |
 
 `/stats` and `/metrics` are **404 at the edge on purpose**. Do not curl them via `https://2007.gliffy.tv`.
 
-Out of scope for this P0 cut: character creator, bank, new skills or regions, art.
+Out of scope for this P0 cut: bank, new skills or regions, recustomize NPC. P1 appearance (skin / hair / tunic) lives on `players.looks`.
 
 ## A1 — Deploy
 
@@ -103,7 +103,7 @@ The dump is the whole `hollowmere` database, which today is:
 | Table | What you get back |
 |-------|-------------------|
 | `accounts` | names, scrypt hashes, roles, bans |
-| `players` | pack JSON, skills (including Mining / Smithing), hp, coins, `account_id` |
+| `players` | pack JSON, skills (including Mining / Smithing), hp, coins, `account_id`, `looks` (appearance JSON, null until the creator runs) |
 | `nodes` | bramble, hazel, trees, copper, tin, kiln, anvil remaining / cooldown |
 | `admin_actions` | host-tool audit log |
 | `schema_migrations` | which steps have run |
@@ -159,7 +159,9 @@ Players have **real accounts**: a name, a password, and an HttpOnly session cook
 | `POST /auth/register` | `{"username","password"}` → 201, sets the session cookie |
 | `POST /auth/login` | `{"username","password"}` → 200, sets the session cookie |
 | `POST /auth/logout` | drops that session and closes its socket |
-| `GET /auth/me` | `{"username"}` or 401 |
+| `GET /auth/me` | `{"username"}` plus `looks` / `needsLooks` |
+| `GET /auth/looks` | catalog + current face (session required) |
+| `POST /auth/looks` | first-write appearance; later posts return the face that already stuck |
 | `POST /auth/password` | `{"current","next"}` → rotates the password and signs out every other session |
 
 Facts worth knowing before an incident:

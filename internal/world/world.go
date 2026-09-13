@@ -83,6 +83,7 @@ type Player struct {
 	HP           int
 	MaxHP        int
 	Coins        int
+	Looks        protocol.Looks
 	Target       string
 	LastChat     uint64
 	Dirty        bool
@@ -239,6 +240,7 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		HP:     hp,
 		MaxHP:  playerMaxHP,
 		Coins:  rec.Coins,
+		Looks:  rec.Looks,
 		Online: online,
 	}
 	if !w.Walkable(p.X, p.Y) {
@@ -893,6 +895,7 @@ func (w *World) Snapshot(id string) protocol.State {
 		}
 		players = append(players, protocol.PlayerView{
 			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
+			Looks: looksView(p.Looks),
 		})
 	}
 	npcs := make([]protocol.NPCView, 0, len(w.NPCs))
@@ -969,14 +972,27 @@ func (w *World) youView(p *Player) protocol.YouView {
 		sk[k] = protocol.Skill{XP: v.XP, Lv: v.Lv}
 	}
 	return protocol.YouView{
-		PlayerView: protocol.PlayerView{ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action},
-		Inv:        inv,
-		Skills:     sk,
-		HP:         p.HP,
-		MaxHP:      p.MaxHP,
-		Coins:      p.Coins,
-		Target:     p.Target,
+		PlayerView: protocol.PlayerView{
+			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
+			Looks: looksView(p.Looks),
+		},
+		Inv:    inv,
+		Skills: sk,
+		HP:     p.HP,
+		MaxHP:  p.MaxHP,
+		Coins:  p.Coins,
+		Target: p.Target,
 	}
+}
+
+// looksView ships a finished creator pass to peers. Unset stays omitted
+// so a load bot without a face does not look like a chosen palette.
+func looksView(l protocol.Looks) *protocol.Looks {
+	if !l.Set() {
+		return nil
+	}
+	cp := l
+	return &cp
 }
 
 // nodeView is the full description, used in the welcome and for campfires

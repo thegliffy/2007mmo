@@ -587,3 +587,188 @@ func TestJoinRevokesLeftoverSessions(t *testing.T) {
 		t.Fatalf("the joining cookie should still work: %v", err)
 	}
 }
+
+func testLooks() protocol.Looks {
+	return protocol.Looks{
+		Skin: protocol.SkinOlive, Hair: protocol.HairTied,
+		HairColor: protocol.HairRusset, Top: protocol.TopInk,
+	}
+}
+
+func (hr *harness) setLooks(t *testing.T, cookie *http.Cookie, looks protocol.Looks) protocol.Looks {
+	t.Helper()
+	resp := hr.post(t, "/auth/looks", looks, cookie)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		t.Fatalf("looks status %d", resp.StatusCode)
+	}
+	var info protocol.LooksInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode looks: %v", err)
+	}
+	if info.Looks == nil {
+		t.Fatal("looks response carried no face")
+	}
+	return *info.Looks
+}
+
+func TestLooksCreateThenMeAndRelogKeepThem(t *testing.T) {
+	hr := newHarness(t)
+	cookie := hr.register(t, "Kyle")
+
+	req, _ := http.NewRequest(http.MethodGet, hr.srv.URL+"/auth/me", nil)
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("me: %v", err)
+	}
+	var before protocol.AuthResponse
+	_ = json.NewDecoder(resp.Body).Decode(&before)
+	resp.Body.Close()
+	if !before.NeedsLooks || before.Looks != nil {
+		t.Fatalf("fresh account should still need a face: %+v", before)
+	}
+
+	stuck := hr.setLooks(t, cookie, testLooks())
+	if stuck != testLooks() {
+		t.Fatalf("created looks = %+v", stuck)
+	}
+
+	req2, _ := http.NewRequest(http.MethodGet, hr.srv.URL+"/auth/me", nil)
+	req2.AddCookie(cookie)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("me after create: %v", err)
+	}
+	var after protocol.AuthResponse
+	_ = json.NewDecoder(resp2.Body).Decode(&after)
+	resp2.Body.Close()
+	if after.NeedsLooks || after.Looks == nil || *after.Looks != testLooks() {
+		t.Fatalf("me after create: %+v", after)
+	}
+
+	// Walk in, leave, walk in again. The welcome must still wear the face.
+	readWelcome := func() protocol.Welcome {
+		conn := dialAuthed(t, hr, cookie)
+		if err := conn.WriteJSON(protocol.In{T: protocol.MsgHello}); err != nil {
+			t.Fatalf("hello: %v", err)
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				t.Fatalf("read welcome: %v", err)
+			}
+			if !strings.Contains(string(data), `"t":"welcome"`) {
+				continue
+			}
+			var welcome protocol.Welcome
+			if err := json.Unmarshal(data, &welcome); err != nil {
+				t.Fatalf("decode welcome: %v", err)
+			}
+			_ = conn.Close()
+			return welcome
+		}
+	}
+
+	first := readWelcome()
+	if first.You.Looks == nil || *first.You.Looks != testLooks() {
+		t.Fatalf("first welcome looks = %+v", first.You.Looks)
+	}
+	second := readWelcome()
+	if second.You.Looks == nil || *second.You.Looks != testLooks() {
+		t.Fatalf("relog welcome looks = %+v", second.You.Looks)
+	}
+}
+
+func TestLooksCreateIsIdempotent(t *testing.T) {
+	hr := newHarness(t)
+	cookie := hr.register(t, "Kyle")
+	first := hr.setLooks(t, cookie, testLooks())
+
+	other := protocol.Looks{
+		Skin: protocol.SkinFair, Hair: protocol.HairLong,
+		HairColor: protocol.HairSnow, Top: protocol.TopBerry,
+	}
+	resp := hr.post(t, "/auth/looks", other, cookie)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second create status %d, want 200", resp.StatusCode)
+	}
+	var info protocol.LooksInfo
+	_ = json.NewDecoder(resp.Body).Decode(&info)
+	if info.Looks == nil || *info.Looks != first {
+		t.Fatalf("second create overwrote the face: %+v", info.Looks)
+	}
+
+	// Still one player row in the world store.
+	var n int
+	for _, p := range hr.hub.World.Store.(*store.Memory).Players {
+		if p.Name == "Kyle" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("player rows named Kyle = %d, want 1", n)
+	}
+}
+
+func TestLooksRejectsUnknownPalette(t *testing.T) {
+	hr := newHarness(t)
+	cookie := hr.register(t, "Kyle")
+	resp := hr.post(t, "/auth/looks", protocol.Looks{
+		Skin: "peach", Hair: protocol.HairShort,
+		HairColor: protocol.HairUmber, Top: protocol.TopMoss,
+	}, cookie)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+}
+
+// Two villagers in the same hamlet must see each other's colours.
+func TestPeerSnapshotCarriesLooks(t *testing.T) {
+	hr := newHarness(t)
+	ashLooks := protocol.Looks{
+		Skin: protocol.SkinFair, Hair: protocol.HairShort,
+		HairColor: protocol.HairStraw, Top: protocol.TopMoss,
+	}
+	briarLooks := testLooks()
+
+	join := func(name string, looks protocol.Looks) *websocket.Conn {
+		cookie := hr.register(t, name)
+		hr.setLooks(t, cookie, looks)
+		conn := dialAuthed(t, hr, cookie)
+		if err := conn.WriteJSON(protocol.In{T: protocol.MsgHello}); err != nil {
+			t.Fatalf("hello %s: %v", name, err)
+		}
+		return conn
+	}
+
+	aConn := join("Ash", ashLooks)
+	bConn := join("Briar", briarLooks)
+	defer aConn.Close()
+	defer bConn.Close()
+
+	_ = aConn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for i := 0; i < 80; i++ {
+		_, data, err := aConn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var st protocol.State
+		if json.Unmarshal(data, &st) != nil || st.T != protocol.MsgState {
+			continue
+		}
+		for _, p := range st.Players {
+			if p.Name != "Briar" {
+				continue
+			}
+			if p.Looks == nil || *p.Looks != briarLooks {
+				t.Fatalf("Ash saw Briar with looks %+v, want %+v", p.Looks, briarLooks)
+			}
+			return
+		}
+	}
+	t.Fatal("Briar never appeared in Ash's snapshot with a face")
+}

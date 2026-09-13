@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/thegliffy/2007mmo/internal/auth"
+	"github.com/thegliffy/2007mmo/internal/protocol"
+	"github.com/thegliffy/2007mmo/internal/world"
 )
 
 // These tests exercise the real SQL: the migration, the account/player
@@ -194,5 +196,67 @@ VALUES ('legacy-1','OldHand',8,8,'[{"id":"berry","n":4}]','{}',now()),
 	}
 	if len(rec.Inv) != 1 || rec.Inv[0].N != 4 {
 		t.Fatalf("legacy pack changed: %+v", rec.Inv)
+	}
+}
+
+func TestPGLooksPersistAndFirstWriteWins(t *testing.T) {
+	pg := testPG(t)
+	ctx := context.Background()
+	a := auth.Account{ID: "acct-1", Username: "Kyle", UsernameKey: "kyle", PWHash: "h"}
+	if err := pg.CreateAccount(ctx, a, "player-1", "Kyle"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	rec, err := pg.LoadPlayer(ctx, "player-1")
+	if err != nil || rec == nil {
+		t.Fatalf("load: %v %v", rec, err)
+	}
+	if rec.Looks.Set() {
+		t.Fatalf("a fresh row must have no face: %+v", rec.Looks)
+	}
+
+	first := protocol.Looks{
+		Skin: protocol.SkinOlive, Hair: protocol.HairTied,
+		HairColor: protocol.HairRusset, Top: protocol.TopInk,
+	}
+	got, wrote, err := world.ApplyLooksFirst(ctx, pg, rec, first)
+	if err != nil || !wrote || got != first {
+		t.Fatalf("first looks: %+v wrote=%v err=%v", got, wrote, err)
+	}
+
+	// Relog: a fresh load must still see the same face.
+	reloaded, err := pg.LoadPlayer(ctx, "player-1")
+	if err != nil || reloaded == nil {
+		t.Fatalf("relog load: %v %v", reloaded, err)
+	}
+	if reloaded.Looks != first {
+		t.Fatalf("relog looks = %+v, want %+v", reloaded.Looks, first)
+	}
+
+	other := protocol.Looks{
+		Skin: protocol.SkinFair, Hair: protocol.HairLong,
+		HairColor: protocol.HairSnow, Top: protocol.TopBerry,
+	}
+	again, wrote, err := world.ApplyLooksFirst(ctx, pg, rec, other)
+	if err != nil || wrote || again != first {
+		t.Fatalf("spam create: looks=%+v wrote=%v err=%v", again, wrote, err)
+	}
+
+	var n int
+	if err := pg.pool.QueryRow(ctx, `SELECT count(*) FROM players WHERE account_id='acct-1'`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("player rows for the account = %d, want 1", n)
+	}
+
+	// A pack commit must keep the face.
+	reloaded.Inv = append(reloaded.Inv, world.ItemStack{ID: "berry", N: 3})
+	if err := pg.SavePlayer(ctx, reloaded); err != nil {
+		t.Fatalf("save pack: %v", err)
+	}
+	kept, _ := pg.LoadPlayer(ctx, "player-1")
+	if kept.Looks != first {
+		t.Fatalf("pack write wiped looks: %+v", kept.Looks)
 	}
 }
