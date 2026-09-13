@@ -84,6 +84,30 @@ three swings, or Defense 12 lets you outlast it. Neither path is required.
 
 Overkill does not pay: hitting a beast with 1 hp left earns experience for 1.
 
+### What the beasts carry
+
+| | Coins | Goblin leather |
+|---|-------|----------------|
+| **Thornkin** | 3–8 | 1 in 16 |
+| **Brambleback** | 12–25 | 1 in 6 |
+
+**Coins never take a pack slot.** They live in a purse on the player record, not
+as an item, so filling your bag with brambleberries costs you nothing in coin.
+Goblin leather is an ordinary item and does take a slot; if the pack is full the
+coins still land and the hamlet says so rather than swallowing the strip.
+
+Drops go through the **same commit-before-memory path as a forage** — Postgres
+first, memory second. Loot is an item entering a pack, so a crash between the
+two would mint it twice, which is the one thing the persistence design exists to
+prevent. A store failure loses the drop; the beast still falls.
+
+The loot roll is the only randomness in the world, and it is owned by the
+`World` rather than a global so a test can pin the seed. Nothing about crash
+recovery depends on it, which is why randomness is acceptable here and not in
+the combat maths.
+
+Villagers carry nothing.
+
 ### Southern combat (Week 2)
 
 - Walk **south** from the stile along the path until the trees open.

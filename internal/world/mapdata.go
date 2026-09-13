@@ -137,16 +137,19 @@ func seedNPCs() []*NPC {
 			ID: "npc-thornkin-1", Name: "Thornkin", X: 10, Y: 22, HomeX: 10, HomeY: 22,
 			WanderEvery: 3, Hostile: true, HP: thornkinHP, MaxHP: thornkinHP, Dmg: thornkinDmg,
 			MinX: 6, MaxX: 16, MinY: 19, MaxY: 26,
+			CoinsMin: 3, CoinsMax: 8, LeatherOdds: 16,
 		},
 		{
 			ID: "npc-thornkin-2", Name: "Thornkin", X: 18, Y: 27, HomeX: 18, HomeY: 27,
 			WanderEvery: 4, Hostile: true, HP: thornkinHP, MaxHP: thornkinHP, Dmg: thornkinDmg,
 			MinX: 12, MaxX: 24, MinY: 24, MaxY: 30,
+			CoinsMin: 3, CoinsMax: 8, LeatherOdds: 16,
 		},
 		{
 			ID: "npc-brambleback", Name: "Brambleback", X: 16, Y: 26, HomeX: 16, HomeY: 26,
 			WanderEvery: 5, Hostile: true, HP: bramblebackHP, MaxHP: bramblebackHP, Dmg: bramblebackDmg,
 			MinX: 10, MaxX: 22, MinY: 24, MaxY: 30,
+			CoinsMin: 12, CoinsMax: 25, LeatherOdds: 6,
 		},
 	}
 }

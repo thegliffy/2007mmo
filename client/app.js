@@ -224,6 +224,11 @@
   }
 
   function renderInv() {
+    const purse = $("purse");
+    if (purse) {
+      const coins = (state.you && state.you.coins) || 0;
+      purse.textContent = coins === 1 ? "1 coin" : coins + " coins";
+    }
     const inv = (state.you && state.you.inv) || [];
     const byId = {};
     for (const it of inv) byId[it.id] = it;

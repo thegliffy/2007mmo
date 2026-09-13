@@ -36,6 +36,9 @@ const (
 	ItemTart  = "tart"
 	ItemNut   = "nut"
 	ItemRoast = "roast"
+	// Dropped by southern beasts. Coins are deliberately not an item:
+	// they live in a purse and never cost a pack slot.
+	ItemLeather = "leather"
 
 	SkillForage  = "forage"
 	SkillCook    = "cook"
@@ -97,6 +100,7 @@ type YouView struct {
 	Skills map[string]Skill `json:"skills"`
 	HP     int              `json:"hp"`
 	MaxHP  int              `json:"maxHp"`
+	Coins  int              `json:"coins"`
 	Target string           `json:"target,omitempty"`
 }
 
@@ -247,10 +251,11 @@ func SkillCatalog() map[string]SkillInfo {
 
 func Catalog() map[string]ItemInfo {
 	return map[string]ItemInfo{
-		ItemBerry: {Name: "Brambleberry", Glyph: "Bb"},
-		ItemPulp:  {Name: "Bramble pulp", Glyph: "Pp"},
-		ItemTart:  {Name: "Hearth tart", Glyph: "Ht"},
-		ItemNut:   {Name: "Hazel nut", Glyph: "Hz"},
-		ItemRoast: {Name: "Roast hazel", Glyph: "Rh"},
+		ItemBerry:   {Name: "Brambleberry", Glyph: "Bb"},
+		ItemPulp:    {Name: "Bramble pulp", Glyph: "Pp"},
+		ItemTart:    {Name: "Hearth tart", Glyph: "Ht"},
+		ItemNut:     {Name: "Hazel nut", Glyph: "Hz"},
+		ItemRoast:   {Name: "Roast hazel", Glyph: "Rh"},
+		ItemLeather: {Name: "Goblin leather", Glyph: "Gl"},
 	}
 }

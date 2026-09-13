@@ -275,6 +275,16 @@ html, body {
 .authform button[type="submit"] { width: 100%; padding: 11px; font-size: 17px; margin-top: 4px; }
 .fine { font-size: 12px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.4; }
 
+.purse {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.purse span {
+  color: #8a6238;
+  font-weight: bold;
+}
+
 /* ---- auth portal ---- */
 .tabs {
   display: flex;

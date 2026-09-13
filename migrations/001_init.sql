@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS players (
     inventory  JSONB NOT NULL DEFAULT '[]',
     skills     JSONB NOT NULL DEFAULT '{}',
     hp         INTEGER,
+    coins      INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

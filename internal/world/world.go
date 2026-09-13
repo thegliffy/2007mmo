@@ -2,9 +2,10 @@ package world
 
 import (
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"unicode"
@@ -60,6 +61,7 @@ type Player struct {
 	Skills       map[string]SkillState
 	HP           int
 	MaxHP        int
+	Coins        int
 	Target       string
 	LastChat     uint64
 	Dirty        bool
@@ -90,6 +92,11 @@ type NPC struct {
 	MinY, MaxY  int
 	Target      string
 	RespawnIn   int
+	// What it is worth. CoinsMin/Max are inclusive; LeatherOdds is a one-in-N
+	// chance, zero meaning it never drops any.
+	CoinsMin    int
+	CoinsMax    int
+	LeatherOdds int
 }
 
 type World struct {
@@ -104,6 +111,11 @@ type World struct {
 	TickN   uint64
 	LastMs  float64
 	notes   map[string]string
+	// rng rolls loot. The simulation itself stays deterministic — this is
+	// only ever consulted for drops, which no crash-recovery guarantee
+	// depends on. Owned by the World rather than global so a test can pin
+	// the seed.
+	rng *rand.Rand
 	// handles maps a real player id to the opaque per-session handle that
 	// peers are allowed to see. Rotated on every join so a handle cannot
 	// be used to follow someone across sessions.
@@ -124,6 +136,7 @@ func New(store Store) *World {
 		Store:   store,
 		notes:   make(map[string]string),
 		handles: make(map[string]string),
+		rng:     rand.New(rand.NewSource(seedFromCrypto())),
 	}
 	for _, n := range seedNodes() {
 		world.Nodes[n.ID] = n
@@ -193,6 +206,7 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		Skills: rec.Skills,
 		HP:     hp,
 		MaxHP:  playerMaxHP,
+		Coins:  rec.Coins,
 		Online: online,
 	}
 	if !w.Walkable(p.X, p.Y) {
@@ -244,11 +258,31 @@ func (w *World) HandleFor(id string) string {
 	return w.RotateHandle(id)
 }
 
+// SeedLoot pins the loot roller, so a test can assert on a drop instead
+// of on a probability.
+func (w *World) SeedLoot(seed int64) { w.rng = rand.New(rand.NewSource(seed)) }
+
+// seedFromCrypto starts the loot roller somewhere unpredictable.
+func seedFromCrypto() int64 {
+	var b [8]byte
+	var n int64
+	if _, err := cryptorand.Read(b[:]); err != nil {
+		return 1
+	}
+	for _, v := range b {
+		n = n<<8 | int64(v)
+	}
+	if n < 0 {
+		n = -n
+	}
+	return n
+}
+
 // newHandle is 96 bits of randomness: unguessable, but carries no
 // meaning and grants nothing on its own.
 func newHandle() string {
 	b := make([]byte, 12)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := cryptorand.Read(b); err != nil {
 		panic("world: crypto/rand unavailable: " + err.Error())
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
@@ -350,7 +384,7 @@ func (w *World) Tick(ctx context.Context) {
 		p := w.Players[id]
 		w.tickChase(p)
 		w.tickMove(p)
-		w.tickCombat(p)
+		w.tickCombat(ctx, p)
 		w.tickAction(ctx, p)
 		if w.TickN%10 == 0 && p.Dirty {
 			_ = w.Store.SavePlayer(ctx, recFromPlayer(p))
@@ -751,6 +785,7 @@ func (w *World) youView(p *Player) protocol.YouView {
 		Skills:     sk,
 		HP:         p.HP,
 		MaxHP:      p.MaxHP,
+		Coins:      p.Coins,
 		Target:     p.Target,
 	}
 }

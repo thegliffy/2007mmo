@@ -60,9 +60,9 @@ VALUES ($1,$2,$3,$4,now())`,
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-INSERT INTO players (id, name, x, y, inventory, skills, hp, account_id, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())`,
-		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, a.ID); err != nil {
+INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, account_id, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins, a.ID); err != nil {
 		if isUniqueViolation(err) {
 			return auth.ErrUsernameTaken
 		}

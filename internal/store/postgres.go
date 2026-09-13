@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS admin_actions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS admin_actions_created_at_idx ON admin_actions (created_at DESC);`},
+
+	{5, "coin purse", `
+ALTER TABLE players ADD COLUMN IF NOT EXISTS coins INTEGER NOT NULL DEFAULT 0;`},
 }
 
 // migrate applies whatever has not been recorded yet, each in its own
@@ -206,11 +209,11 @@ func (p *Postgres) SchemaVersion(ctx context.Context) (int, error) {
 
 func (p *Postgres) LoadPlayer(ctx context.Context, id string) (*world.PlayerRec, error) {
 	row := p.pool.QueryRow(ctx, `
-SELECT id, name, x, y, inventory, skills, hp FROM players WHERE id=$1`, id)
+SELECT id, name, x, y, inventory, skills, hp, coins FROM players WHERE id=$1`, id)
 	var rec world.PlayerRec
 	var inv, skills []byte
 	var hp *int
-	err := row.Scan(&rec.ID, &rec.Name, &rec.X, &rec.Y, &inv, &skills, &hp)
+	err := row.Scan(&rec.ID, &rec.Name, &rec.X, &rec.Y, &inv, &skills, &hp, &rec.Coins)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -248,8 +251,8 @@ func (p *Postgres) SavePlayer(ctx context.Context, rec *world.PlayerRec) error {
 		return err
 	}
 	_, err = p.pool.Exec(ctx, `
-INSERT INTO players (id, name, x, y, inventory, skills, hp, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
     x=EXCLUDED.x,
@@ -257,8 +260,9 @@ ON CONFLICT (id) DO UPDATE SET
     inventory=EXCLUDED.inventory,
     skills=EXCLUDED.skills,
     hp=EXCLUDED.hp,
+    coins=EXCLUDED.coins,
     updated_at=now()`,
-		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP)
+		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins)
 	return err
 }
 
@@ -283,8 +287,8 @@ func (p *Postgres) CommitAction(ctx context.Context, rec *world.PlayerRec, n *wo
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-INSERT INTO players (id, name, x, y, inventory, skills, hp, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
     x=EXCLUDED.x,
@@ -292,8 +296,9 @@ ON CONFLICT (id) DO UPDATE SET
     inventory=EXCLUDED.inventory,
     skills=EXCLUDED.skills,
     hp=EXCLUDED.hp,
+    coins=EXCLUDED.coins,
     updated_at=now()`,
-		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP); err != nil {
+		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins); err != nil {
 		return err
 	}
 	if n != nil {

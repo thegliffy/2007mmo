@@ -1,7 +1,9 @@
 package world
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/thegliffy/2007mmo/internal/protocol"
 )
@@ -157,7 +159,7 @@ func (w *World) tickChase(p *Player) {
 	}
 }
 
-func (w *World) tickCombat(p *Player) {
+func (w *World) tickCombat(ctx context.Context, p *Player) {
 	if p.Target == "" {
 		if p.Action == protocol.ActionFight {
 			p.Action = "idle"
@@ -198,7 +200,7 @@ func (w *World) tickCombat(p *Player) {
 	}
 	p.Dirty = true
 	if npc.HP <= 0 {
-		w.fellNPC(npc, p)
+		w.fellNPC(ctx, npc, p)
 		return
 	}
 
@@ -214,14 +216,14 @@ func (w *World) tickCombat(p *Player) {
 	}
 }
 
-func (w *World) fellNPC(npc *NPC, p *Player) {
+func (w *World) fellNPC(ctx context.Context, npc *NPC, p *Player) {
 	npc.HP = 0
 	npc.Target = ""
 	npc.RespawnIn = npcRespawnTicks
 	if p != nil {
 		p.Target = ""
 		p.Action = "idle"
-		w.note(p.ID, "The "+npc.Name+" slumps into the bracken.")
+		w.note(p.ID, strings.TrimSpace("The "+npc.Name+" slumps into the bracken. "+w.awardDrops(ctx, npc, p)))
 	}
 	for _, other := range w.Players {
 		if other != nil && other.Target == npc.ID {
@@ -231,6 +233,78 @@ func (w *World) fellNPC(npc *NPC, p *Player) {
 			}
 		}
 	}
+}
+
+// awardDrops rolls what a fallen beast was carrying and pays it out. It
+// returns the line to show the player.
+//
+// Loot is an item entering a pack, so it goes through the same
+// commit-before-memory path as a forage: Postgres first, then memory. Do
+// it the other way and a crash between the two mints the drop twice,
+// which is the one thing the whole persistence design exists to prevent.
+func (w *World) awardDrops(ctx context.Context, npc *NPC, p *Player) string {
+	coins := 0
+	if npc.CoinsMax > 0 {
+		lo, hi := npc.CoinsMin, npc.CoinsMax
+		if lo < 0 {
+			lo = 0
+		}
+		if hi < lo {
+			hi = lo
+		}
+		coins = lo + w.roll(hi-lo+1)
+	}
+	leather := npc.LeatherOdds > 0 && w.roll(npc.LeatherOdds) == 0
+
+	if coins == 0 && !leather {
+		return ""
+	}
+
+	next := recFromPlayer(p)
+	next.Coins += coins
+
+	packFull := false
+	if leather {
+		before := len(next.Inv)
+		next.Inv = addItem(next.Inv, protocol.ItemLeather, 1)
+		// addItem silently declines once every slot is taken; say so
+		// rather than dropping it on the floor without a word.
+		if len(next.Inv) == before && countItem(next.Inv, protocol.ItemLeather) == countItem(p.Inv, protocol.ItemLeather) {
+			packFull = true
+			leather = false
+		}
+	}
+
+	if w.Store != nil {
+		if err := w.Store.CommitAction(ctx, next, nil); err != nil {
+			// The beast still fell; it simply paid nothing. Losing a drop
+			// is the safe direction.
+			return ""
+		}
+	}
+	p.Coins = next.Coins
+	p.Inv = next.Inv
+	p.Dirty = false
+
+	switch {
+	case leather && coins > 0:
+		return fmt.Sprintf("You take %d coins and a strip of goblin leather.", coins)
+	case leather:
+		return "You take a strip of goblin leather."
+	case packFull:
+		return fmt.Sprintf("You take %d coins. Your pack is too full for the leather.", coins)
+	default:
+		return fmt.Sprintf("You take %d coins.", coins)
+	}
+}
+
+// roll returns a value in [0,n). A world without a seeded roller — one
+// built straight from a struct literal in a test — never drops.
+func (w *World) roll(n int) int {
+	if w.rng == nil || n <= 1 {
+		return 0
+	}
+	return w.rng.Intn(n)
 }
 
 func (w *World) defeat(p *Player) {

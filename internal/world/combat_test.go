@@ -177,21 +177,38 @@ func TestFoodHealsWithoutDuping(t *testing.T) {
 	}
 }
 
-func TestCombatTickDoesNotMintItems(t *testing.T) {
+// Combat used to be unable to touch the pack at all, and this asserted
+// the pack stayed empty. Beasts drop loot now, so the premise moved: what
+// still has to hold is that memory never holds an item the store does not.
+// Anything in the pack after a kill must also be on the record.
+func TestCombatNeverLeavesItemsTheStoreDoesNotHave(t *testing.T) {
 	st := newMem()
 	w := testWorld(t, st)
+	w.SeedLoot(11)
 	npc := firstHostile(w, "Thornkin")
 	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Skills[protocol.SkillMelee] = atLevel(20)
 	p.X, p.Y = npc.X, npc.Y
 	w.SetAttack("p1", npc.ID)
 	for i := 0; i < 8; i++ {
 		w.Tick(context.Background())
 	}
-	if len(p.Inv) != 0 {
-		t.Fatalf("combat must not mint pack items: %v", p.Inv)
+
+	stored, ok := st.players["p1"]
+	if !ok {
+		if len(p.Inv) != 0 || p.Coins != 0 {
+			t.Fatalf("player holds %v and %d coins that were never stored", p.Inv, p.Coins)
+		}
+		return
 	}
-	if _, ok := st.players["p1"]; ok && len(st.players["p1"].Inv) != 0 {
-		t.Fatalf("store gained items from combat: %+v", st.players["p1"].Inv)
+	for _, held := range p.Inv {
+		if countItem(stored.Inv, held.ID) < held.N {
+			t.Fatalf("pack holds %d %s, the store has %d",
+				held.N, held.ID, countItem(stored.Inv, held.ID))
+		}
+	}
+	if p.Coins > stored.Coins {
+		t.Fatalf("purse holds %d coins, the store has %d", p.Coins, stored.Coins)
 	}
 }
 
@@ -384,7 +401,7 @@ func TestCombatDamageMarksPlayerDirty(t *testing.T) {
 	p.X, p.Y = npc.X, npc.Y-1
 	w.SetAttack("p1", npc.ID)
 	p.Dirty = false
-	w.tickCombat(p)
+	w.tickCombat(context.Background(), p)
 	if p.HP == playerMaxHP {
 		t.Skip("no damage exchanged this tick")
 	}
@@ -459,7 +476,7 @@ func TestCombatTrainsMeleeAndDefense(t *testing.T) {
 	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
 	p.X, p.Y = npc.X, npc.Y-1
 	w.SetAttack("p1", npc.ID)
-	w.tickCombat(p)
+	w.tickCombat(context.Background(), p)
 
 	melee := p.Skills[protocol.SkillMelee]
 	def := p.Skills[protocol.SkillDefense]
@@ -486,7 +503,7 @@ func TestDefenseXPDoesNotSlowAsItImproves(t *testing.T) {
 		p.X, p.Y = npc.X, npc.Y-1
 		w.SetAttack(p.ID, npc.ID)
 		before := p.Skills[protocol.SkillDefense].XP
-		w.tickCombat(p)
+		w.tickCombat(context.Background(), p)
 		return p.Skills[protocol.SkillDefense].XP - before
 	}
 	low, high := gain(1), gain(20)
@@ -507,7 +524,7 @@ func TestBramblebackGoesFromLethalToBeatable(t *testing.T) {
 		p.X, p.Y = npc.X, npc.Y-1
 		w.SetAttack("p1", npc.ID)
 		for i := 0; i < 40; i++ {
-			w.tickCombat(p)
+			w.tickCombat(context.Background(), p)
 			if !npc.Living() {
 				return true // felled it
 			}
@@ -538,7 +555,7 @@ func TestMeleeXPIsCappedByRemainingHealth(t *testing.T) {
 	p.X, p.Y = npc.X, npc.Y-1
 	w.SetAttack("p1", npc.ID)
 	before := p.Skills[protocol.SkillMelee].XP
-	w.tickCombat(p)
+	w.tickCombat(context.Background(), p)
 	gained := p.Skills[protocol.SkillMelee].XP - before
 	if gained != 1*meleeXPPerDamage {
 		t.Fatalf("gained %d xp for a killing blow on 1 hp, want %d — overkill should not pay",
@@ -561,5 +578,158 @@ func TestOlderCharactersGainTheNewSkills(t *testing.T) {
 	}
 	if p.Skills[protocol.SkillForage].Lv != 7 {
 		t.Error("existing skill was clobbered")
+	}
+}
+
+// killThornkin fells a beast and returns the player, for drop assertions.
+func killThornkin(t *testing.T, w *World, st Store, seed int64) *Player {
+	t.Helper()
+	w.SeedLoot(seed)
+	npc := w.npcByID("npc-thornkin-1")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Skills[protocol.SkillMelee] = atLevel(20) // one swing, so the roll is the only variable
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+	for i := 0; i < 12 && npc.Living(); i++ {
+		w.tickCombat(context.Background(), p)
+	}
+	if npc.Living() {
+		t.Fatal("setup: the thornkin did not fall")
+	}
+	return p
+}
+
+// Coins are a purse, not an item: they must never consume a pack slot.
+func TestCoinsDoNotTakeAPackSlot(t *testing.T) {
+	w := testWorld(t, newMem())
+	p := killThornkin(t, w, nil, 1)
+	if p.Coins <= 0 {
+		t.Fatalf("no coins dropped (got %d)", p.Coins)
+	}
+	for _, it := range p.Inv {
+		if it.ID == "coins" || it.ID == "coin" {
+			t.Fatal("coins ended up in the pack")
+		}
+	}
+	// A Thornkin is worth between CoinsMin and CoinsMax.
+	npc := w.npcByID("npc-thornkin-1")
+	if p.Coins < npc.CoinsMin || p.Coins > npc.CoinsMax {
+		t.Fatalf("coins = %d, outside the table's %d..%d", p.Coins, npc.CoinsMin, npc.CoinsMax)
+	}
+}
+
+// The purse survives a logout like everything else on the record.
+func TestCoinsPersist(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	p := killThornkin(t, w, st, 3)
+	want := p.Coins
+	w.PersistPlayer(context.Background(), "p1")
+
+	rec, err := st.LoadPlayer(context.Background(), "p1")
+	if err != nil || rec == nil {
+		t.Fatalf("load: %v %v", rec, err)
+	}
+	if rec.Coins != want {
+		t.Fatalf("stored coins = %d, want %d", rec.Coins, want)
+	}
+	w2 := testWorld(t, st)
+	if got := w2.UpsertPlayer(rec, true).Coins; got != want {
+		t.Fatalf("coins after rejoin = %d, want %d", got, want)
+	}
+}
+
+// Loot is an item entering a pack, so it must not exist in memory unless
+// the store took it. Otherwise a crash between the two mints it twice —
+// the exact thing the commit-before-memory rule prevents.
+func TestDropIsLostNotDuplicatedWhenTheStoreFails(t *testing.T) {
+	st := newMem()
+	w := testWorld(t, st)
+	w.SeedLoot(5)
+	npc := w.npcByID("npc-thornkin-1")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Skills[protocol.SkillMelee] = atLevel(20)
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+
+	st.fail = true // the store goes away mid-kill
+	for i := 0; i < 12 && npc.Living(); i++ {
+		w.tickCombat(context.Background(), p)
+	}
+	if npc.Living() {
+		t.Fatal("setup: the thornkin did not fall")
+	}
+	if p.Coins != 0 {
+		t.Fatalf("coins appeared in memory without a commit: %d", p.Coins)
+	}
+	if countItem(p.Inv, protocol.ItemLeather) != 0 {
+		t.Fatal("leather appeared in memory without a commit")
+	}
+}
+
+// Goblin leather is rare, and rare should mean rare.
+func TestLeatherIsRare(t *testing.T) {
+	drops, runs := 0, 400
+	for i := 0; i < runs; i++ {
+		w := testWorld(t, newMem())
+		p := killThornkin(t, w, nil, int64(i))
+		drops += countItem(p.Inv, protocol.ItemLeather)
+	}
+	rate := float64(drops) / float64(runs)
+	odds := 1.0 / 16.0
+	if rate < odds*0.5 || rate > odds*2 {
+		t.Fatalf("leather dropped %d/%d (%.3f); the table says about %.3f", drops, runs, rate, odds)
+	}
+	if drops == 0 {
+		t.Fatal("leather never dropped at all")
+	}
+}
+
+// A full pack must not silently swallow the drop.
+func TestFullPackIsToldAboutTheLeather(t *testing.T) {
+	w := testWorld(t, newMem())
+	w.SeedLoot(5)
+	npc := w.npcByID("npc-thornkin-1")
+	p := w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true)
+	p.Skills[protocol.SkillMelee] = atLevel(20)
+	// Fill every slot with something that is not leather.
+	for i := 0; i < protocol.InvSlots; i++ {
+		p.Inv = append(p.Inv, ItemStack{ID: "filler" + itoa(i), N: 1})
+	}
+	p.X, p.Y = npc.X, npc.Y-1
+	w.SetAttack("p1", npc.ID)
+	for i := 0; i < 12 && npc.Living(); i++ {
+		w.tickCombat(context.Background(), p)
+	}
+	if len(p.Inv) > protocol.InvSlots {
+		t.Fatalf("pack overflowed to %d slots", len(p.Inv))
+	}
+	if p.Coins <= 0 {
+		t.Fatal("coins should still be paid when the pack is full")
+	}
+}
+
+// The Brambleback is harder, so it pays better.
+func TestBramblebackPaysMoreThanThornkin(t *testing.T) {
+	w := testWorld(t, newMem())
+	thorn := w.npcByID("npc-thornkin-1")
+	bram := w.npcByID("npc-brambleback")
+	if bram.CoinsMin <= thorn.CoinsMax {
+		t.Fatalf("brambleback %d..%d does not out-pay thornkin %d..%d",
+			bram.CoinsMin, bram.CoinsMax, thorn.CoinsMin, thorn.CoinsMax)
+	}
+	if bram.LeatherOdds >= thorn.LeatherOdds {
+		t.Fatalf("brambleback leather odds 1-in-%d should beat thornkin's 1-in-%d",
+			bram.LeatherOdds, thorn.LeatherOdds)
+	}
+}
+
+// Villagers are not a payday.
+func TestVillagersDropNothing(t *testing.T) {
+	w := testWorld(t, newMem())
+	for _, n := range w.NPCs {
+		if !n.Hostile && (n.CoinsMax > 0 || n.LeatherOdds > 0) {
+			t.Errorf("%s is peaceful but carries loot", n.ID)
+		}
 	}
 }

@@ -21,6 +21,8 @@ type PlayerRec struct {
 	// HP is nil for rows written before health was persisted, and for a
 	// freshly minted character. Nil means "start at full".
 	HP *int
+	// Coins live outside Inv on purpose: a purse costs no pack slot.
+	Coins int
 }
 
 type NodeRec struct {
@@ -38,7 +40,8 @@ func recFromPlayer(p *Player) *PlayerRec {
 		sk[k] = v
 	}
 	hp := p.HP
-	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y, Inv: inv, Skills: sk, HP: &hp}
+	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y,
+		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins}
 }
 
 func recFromNode(n *Node) *NodeRec {
