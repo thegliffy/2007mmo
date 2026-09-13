@@ -121,6 +121,16 @@ async def main():
     inv, st = await wait_inv(ws, "pick")
     print("bought pick", inv, "coins", st["you"]["coins"])
 
+    # A pick in the pack breaks no rock. Put it in your hand.
+    await ws.send(json.dumps({"t": "equip", "id": "pick"}))
+    for _ in range(10):
+        st = await read_until(ws, "state")
+        if ((st["you"].get("equipped") or {}).get("hand")) == "pick":
+            break
+    else:
+        raise AssertionError("the pick never reached the hand: %s" % st["you"].get("equipped"))
+    print("pick in hand")
+
     await ws.send(json.dumps({"t": "interact", "id": by_kind["copper"][0]["id"]}))
     inv, _ = await wait_inv(ws, "copper")
     print("mine copper", inv)
@@ -146,8 +156,11 @@ async def main():
     await ws.close()
     ws2, _, state2 = await join(account)
     inv2 = state2["you"]["inv"]
-    assert count(inv2, "knife") == 1 and count(inv2, "pick") == 1, inv2
-    print("reconnect persist", inv2)
+    worn2 = (state2["you"].get("equipped") or {}).get("hand")
+    assert count(inv2, "knife") == 1, inv2
+    # The pick is worn, not packed, and worn gear survives a relog too.
+    assert worn2 == "pick", (worn2, inv2)
+    print("reconnect persist", inv2, "hand", worn2)
     await ws2.close()
     print("METAL LOOP PASS")
 

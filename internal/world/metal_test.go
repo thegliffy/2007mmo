@@ -7,8 +7,11 @@ import (
 	"github.com/thegliffy/2007mmo/internal/protocol"
 )
 
-func withPick(p *Player) *Player {
-	return withTools(p, protocol.ItemPick)
+// A pick in the pack breaks no rock: it has to be in hand, same as the
+// axe. withPick therefore equips rather than merely carries.
+func withPick(t *testing.T, w *World, p *Player) *Player {
+	t.Helper()
+	return armedWith(t, w, p, protocol.ItemPick)
 }
 
 // Without a pick a vein is just a rock.
@@ -39,7 +42,7 @@ func TestCannotMineWithoutAPick(t *testing.T) {
 func TestPickMakesTheDifference(t *testing.T) {
 	w := testWorld(t, newMem())
 	vein := firstNodeOfKind(w, KindCopper)
-	p := withPick(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
+	p := withPick(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
 	standBeside(t, w, p, vein)
 	w.SetInteract("p1", vein.ID)
 	for i := 0; i < mineTicks+4; i++ {
@@ -59,7 +62,7 @@ func TestMiningDoesNotTrainWoodcutting(t *testing.T) {
 	if vein == nil {
 		t.Fatal("no tin veins on the map")
 	}
-	p := withPick(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
+	p := withPick(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
 	standBeside(t, w, p, vein)
 	w.SetInteract("p1", vein.ID)
 	for i := 0; i < mineTicks+4; i++ {
@@ -79,7 +82,7 @@ func TestMiningDoesNotTrainWoodcutting(t *testing.T) {
 func TestVeinDepletesAndRegrows(t *testing.T) {
 	w := testWorld(t, newMem())
 	vein := firstNodeOfKind(w, KindCopper)
-	p := withPick(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
+	p := withPick(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
 	standBeside(t, w, p, vein)
 
 	for i := 0; i < oreYield; i++ {
@@ -199,7 +202,7 @@ func TestBeginnerMetalLoop(t *testing.T) {
 	tin := firstNodeOfKind(w, KindTin)
 	kiln := firstNodeOfKind(w, KindKiln)
 	anvil := firstNodeOfKind(w, KindAnvil)
-	p := withPick(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
+	p := withPick(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
 
 	standBeside(t, w, p, copper)
 	w.SetInteract("p1", copper.ID)
@@ -243,11 +246,13 @@ func TestBeginnerMetalLoop(t *testing.T) {
 // A store failure must not mint the ore or spend the vein.
 func TestMineAbortedIfStoreFails(t *testing.T) {
 	st := newMem()
-	st.fail = true
 	w := testWorld(t, st)
 	vein := firstNodeOfKind(w, KindCopper)
-	p := withPick(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
+	// Arm before the store starts failing: equipping commits too, and this
+	// test is about the mine, not about taking up the pick.
+	p := withPick(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true))
 	standBeside(t, w, p, vein)
+	st.fail = true
 	before := vein.Remaining
 	w.SetInteract("p1", vein.ID)
 	for i := 0; i < mineTicks+3; i++ {
@@ -313,7 +318,7 @@ func TestKnifeAddsAttackAndDamage(t *testing.T) {
 		}
 		p := w.UpsertPlayer(NewPlayerRec(id, "Kyle"), true)
 		if withKnife {
-			withTools(p, protocol.ItemKnife)
+			armedWith(t, w, p, protocol.ItemKnife)
 		}
 		p.X, p.Y = npc.X, npc.Y-1
 		w.SetAttack(id, npc.ID)

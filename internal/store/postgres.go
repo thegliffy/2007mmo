@@ -62,6 +62,15 @@ func (p *Postgres) Ping(ctx context.Context) error {
 // direction — items are granted only after a commit succeeds.
 const writeTimeout = 2 * time.Second
 
+// marshalEquipped always produces a JSON object, never null, so the
+// NOT NULL column stays satisfied for a player wearing nothing.
+func marshalEquipped(m map[string]string) ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(m)
+}
+
 // A migration is one numbered, named step. Every statement must be
 // idempotent: this scheme was adopted over a database that had already
 // been built by an unversioned CREATE IF NOT EXISTS block, so migration 1
@@ -144,6 +153,9 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS looks JSONB;`},
 	{7, "personal bank", `
 ALTER TABLE players ADD COLUMN IF NOT EXISTS bank JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE players ADD COLUMN IF NOT EXISTS bank_coins INTEGER NOT NULL DEFAULT 0;`},
+
+	{8, "worn equipment", `
+ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped JSONB NOT NULL DEFAULT '{}';`},
 }
 
 // migrate applies whatever has not been recorded yet, each in its own
@@ -216,11 +228,11 @@ func (p *Postgres) SchemaVersion(ctx context.Context) (int, error) {
 
 func (p *Postgres) LoadPlayer(ctx context.Context, id string) (*world.PlayerRec, error) {
 	row := p.pool.QueryRow(ctx, `
-SELECT id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks FROM players WHERE id=$1`, id)
+SELECT id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks, equipped FROM players WHERE id=$1`, id)
 	var rec world.PlayerRec
-	var inv, skills, bank, looks []byte
+	var inv, skills, bank, looks, equipped []byte
 	var hp *int
-	err := row.Scan(&rec.ID, &rec.Name, &rec.X, &rec.Y, &inv, &skills, &hp, &rec.Coins, &bank, &rec.BankCoins, &looks)
+	err := row.Scan(&rec.ID, &rec.Name, &rec.X, &rec.Y, &inv, &skills, &hp, &rec.Coins, &bank, &rec.BankCoins, &looks, &equipped)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -243,6 +255,11 @@ SELECT id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks FRO
 		rec.Bank = nil
 	} else if err := json.Unmarshal(bank, &rec.Bank); err != nil {
 		return nil, fmt.Errorf("player %s: unreadable bank json: %w", id, err)
+	}
+	if len(equipped) > 0 && string(equipped) != "null" {
+		if err := json.Unmarshal(equipped, &rec.Equipped); err != nil {
+			return nil, fmt.Errorf("player %s: unreadable equipment json: %w", id, err)
+		}
 	}
 	if err := unmarshalLooks(looks, &rec.Looks); err != nil {
 		return nil, fmt.Errorf("player %s: unreadable looks json: %w", id, err)
@@ -269,13 +286,17 @@ func (p *Postgres) SavePlayer(ctx context.Context, rec *world.PlayerRec) error {
 	if err != nil {
 		return err
 	}
+	eq, err := marshalEquipped(rec.Equipped)
+	if err != nil {
+		return err
+	}
 	bank, err := marshalBank(rec.Bank)
 	if err != nil {
 		return err
 	}
 	_, err = p.pool.Exec(ctx, `
-INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks, equipped, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
     x=EXCLUDED.x,
@@ -287,8 +308,9 @@ ON CONFLICT (id) DO UPDATE SET
     bank=EXCLUDED.bank,
     bank_coins=EXCLUDED.bank_coins,
     looks=EXCLUDED.looks,
+    equipped=EXCLUDED.equipped,
     updated_at=now()`,
-		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins, bank, rec.BankCoins, looks)
+		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins, bank, rec.BankCoins, looks, eq)
 	return err
 }
 
@@ -316,13 +338,17 @@ func (p *Postgres) CommitAction(ctx context.Context, rec *world.PlayerRec, n *wo
 	if err != nil {
 		return err
 	}
+	eq, err := marshalEquipped(rec.Equipped)
+	if err != nil {
+		return err
+	}
 	bank, err := marshalBank(rec.Bank)
 	if err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+INSERT INTO players (id, name, x, y, inventory, skills, hp, coins, bank, bank_coins, looks, equipped, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
 ON CONFLICT (id) DO UPDATE SET
     name=EXCLUDED.name,
     x=EXCLUDED.x,
@@ -334,8 +360,9 @@ ON CONFLICT (id) DO UPDATE SET
     bank=EXCLUDED.bank,
     bank_coins=EXCLUDED.bank_coins,
     looks=EXCLUDED.looks,
+    equipped=EXCLUDED.equipped,
     updated_at=now()`,
-		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins, bank, rec.BankCoins, looks); err != nil {
+		rec.ID, rec.Name, rec.X, rec.Y, inv, sk, rec.HP, rec.Coins, bank, rec.BankCoins, looks, eq); err != nil {
 		return err
 	}
 	if n != nil {

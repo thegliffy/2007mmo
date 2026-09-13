@@ -16,6 +16,22 @@ func withTools(p *Player, ids ...string) *Player {
 	return p
 }
 
+// wielding gear has to be equipped now, not merely carried. Flint and
+// steel is used from the pack, so it needs no slot.
+func armedWith(t *testing.T, w *World, p *Player, ids ...string) *Player {
+	t.Helper()
+	withTools(p, ids...)
+	for _, id := range ids {
+		if protocol.EquipSlot(id) == "" {
+			continue
+		}
+		if msg, ok := w.Equip(context.Background(), p.ID, id); !ok {
+			t.Fatalf("could not equip %s: %s", id, msg)
+		}
+	}
+	return p
+}
+
 func firstNodeOfKind(w *World, kind string) *Node {
 	for _, n := range w.Nodes {
 		if n.Kind == kind {
@@ -41,7 +57,7 @@ func TestChoppingATreeYieldsALog(t *testing.T) {
 	if tree == nil {
 		t.Fatal("no choppable trees on the map")
 	}
-	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
+	p := armedWith(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 
 	w.SetInteract("p1", tree.ID)
@@ -63,7 +79,7 @@ func TestChoppingATreeYieldsALog(t *testing.T) {
 func TestChoppingDoesNotTrainForaging(t *testing.T) {
 	w := testWorld(t, newMem())
 	tree := firstNodeOfKind(w, KindTree)
-	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
+	p := armedWith(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 	w.SetInteract("p1", tree.ID)
 	for i := 0; i < chopTicks+3; i++ {
@@ -78,7 +94,7 @@ func TestChoppingDoesNotTrainForaging(t *testing.T) {
 func TestTreeDepletesAndRegrows(t *testing.T) {
 	w := testWorld(t, newMem())
 	tree := firstNodeOfKind(w, KindTree)
-	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
+	p := armedWith(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 	standBeside(t, w, p, tree)
 
 	for i := 0; i < treeYield; i++ {
@@ -266,7 +282,7 @@ func TestUnreachableTreesAreNotNodes(t *testing.T) {
 // on the map, sending them all every tick was most of the frame.
 func TestSnapshotOmitsNodesAtRest(t *testing.T) {
 	w := testWorld(t, newMem())
-	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
+	p := armedWith(t, w, w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
 
 	if got := len(w.Snapshot("p1").Nodes); got != 0 {
 		t.Fatalf("a quiet world sent %d nodes; it should send none", got)

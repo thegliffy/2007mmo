@@ -89,6 +89,12 @@ func copyRec(p *world.PlayerRec) world.PlayerRec {
 		hp := *p.HP
 		cp.HP = &hp
 	}
+	if p.Equipped != nil {
+		cp.Equipped = make(map[string]string, len(p.Equipped))
+		for k, v := range p.Equipped {
+			cp.Equipped[k] = v
+		}
+	}
 	return cp
 }
 

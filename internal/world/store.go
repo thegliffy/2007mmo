@@ -33,6 +33,8 @@ type PlayerRec struct {
 	BankCoins int
 	// Looks is empty until the creator writes it. Relog must keep it.
 	Looks protocol.Looks
+	// Equipped maps slot to item id. An equipped item is not in Inv.
+	Equipped map[string]string
 }
 
 type NodeRec struct {
@@ -53,7 +55,8 @@ func recFromPlayer(p *Player) *PlayerRec {
 	bank := append([]ItemStack(nil), p.Bank...)
 	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y,
 		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins,
-		Bank: bank, BankCoins: p.BankCoins, Looks: p.Looks}
+		Bank: bank, BankCoins: p.BankCoins, Looks: p.Looks,
+		Equipped: copyEquipped(p.Equipped)}
 }
 
 func recFromNode(n *Node) *NodeRec {

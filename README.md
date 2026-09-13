@@ -66,29 +66,48 @@ slots, so a pack of tools costs what it looks like it costs.
 | Quarry pick | mining copper and tin | 14 |
 | Bronze knife | +2 Melee levels and +1 damage | 42 |
 | Briar sword | +4 Melee levels and +1 damage | 60 |
+| Leather jerkin | +6 Defense levels, worn on the body | 45 |
 
-**Work that needs a tool now requires one.** No axe, no logs — the tree just
-says so. No flint, no fire. No pick, no ore. Foraging and cooking need nothing, which is what
+**Work that needs a tool now requires one in hand.** No axe, no logs — the tree
+just says so. No pick, no ore. Flint is the exception: it works from the pack. Foraging and cooking need nothing, which is what
 makes them the way in: pick a round of brambles, sell them to the pedlar, and
 the twelve coins buy your first axe. A pick is fourteen — one more berry, or a
 log.
 
-Carrying a tool is enough; there is no equip slot. The best blade in the pack
-counts toward your swing, so a sword works by being on you rather than by being
-worn.
+### Equip slots
+
+There are two: **hand** and **body**. Click a sword, an axe, a pick, a knife or
+the jerkin in the pack to put it on; click the slot to put it away. The item
+leaves the pack while it is worn, and swapping stows whatever was there — with a
+full pack the swap is refused rather than dropping anything.
+
+Carrying used to be enough, and that was the problem: a sword cost one slot and
+gave its bonus from inside the pack, so there was never a reason not to have
+everything at once. **One hand means one choice.** The axe fells trees, the pick
+breaks rock, the sword swings harder, and you cannot be doing all three this
+minute:
+
+> You would need an axe in hand for that.
+
+So a walk east to the scars is a walk where you are not felling anything, and
+coming home to cut wood means putting the pick away. That is the cost the slot
+exists to charge.
+
+Flint and steel has no slot. It is used out of the pack, so lighting a fire
+never costs you your weapon.
 
 ### Pointing a tool at something
 
-Click a tool in the pack to **take it in hand** — it lights up and the pack says
-what it is waiting for. The next click on the world says what to use it on:
+Click flint and steel in the pack to **take it in hand** — it lights up and the
+pack says what it is waiting for. The next click on the world says what to use
+it on: flint, then a pile of logs, and the logs catch. Clicking anywhere it does
+not apply simply puts it away, and right-clicking a pile still lights it
+directly, so the held-tool path is a way of being deliberate rather than the
+only way through.
 
-- flint and steel, then a pile of logs → a campfire
-- the axe, then a tree → a chop
-- the quarry pick, then a copper or tin vein → a mine
-
-Clicking anywhere it does not apply simply puts the tool away. The plain clicks
-still work too (click a tree to chop, right-click a pile to light it), so the
-held-tool path is a way of being deliberate rather than the only way through.
+The axe and the pick used to work this way too. They are worn in the hand now,
+so the click that chops a tree or mines a vein is the plain one — what you are
+holding decides whether it works.
 
 The server checks the tool independently of all this. Holding the flint is a
 convenience of the client; **having it is a rule of the world**.
@@ -360,7 +379,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=iso-hearth` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=equip-1` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -371,7 +390,13 @@ python3 scripts/smoke.py
 python3 scripts/week1-loop.py   # berry → mill → tart, hazel → roast, persist
 python3 scripts/south-fight.py  # walk-equivalent: attack a Thornkin to the bracken
 python3 scripts/metal-loop.py   # forage → buy a pick → mine → smelt → forge a knife
+python3 scripts/equip.py        # buy, wear, swap: the axe must be in hand to chop
 ```
+
+`equip.py` takes a second argument: a shell command that runs one SQL
+statement against the local database, used only to fill the purse. Earning 120
+coins honestly is a long grind and this script is testing equipment, not the
+economy.
 
 Each script registers its own throwaway account on first run (`scripts/hollow_auth.py`) and logs in on later runs. They are for a local stack — do not point them at the live host.
 
@@ -501,7 +526,7 @@ client/            carved wood + parchment HUD + ¾ isometric chase-cam hamlet
 client/assets/     AD pack: terrain, buildings, props, gather, hostiles, npcs, paperdoll
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
-scripts/           smoke, T3 helpers, metal-loop, no-dupe chaos, pick-npc / iso / sprites tests, login helper, pg backup / restore / drill
+scripts/           smoke, T3 helpers, metal-loop, equip, no-dupe chaos, pick-npc / iso / sprites tests, login helper, pg backup / restore / drill
 docker-compose.yml world + postgres + redis
 ```
 

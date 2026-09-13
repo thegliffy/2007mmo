@@ -364,7 +364,7 @@ func (w *World) LightFire(id, groundID string) (string, bool) {
 	if countItem(g.Inv, protocol.ItemLog) < logsPerFire {
 		return "You need a log on the ground to build a fire.", false
 	}
-	if !hasTool(p.Inv, "light") {
+	if !wielding(p, "light") {
 		return "You have nothing to strike a spark with.", false
 	}
 	if !adjacent(p.X, p.Y, g.X, g.Y) && (p.X != g.X || p.Y != g.Y) {

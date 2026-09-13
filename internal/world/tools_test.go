@@ -34,6 +34,9 @@ func TestAxeMakesTheDifference(t *testing.T) {
 	w := testWorld(t, newMem())
 	tree := firstNodeOfKind(w, KindTree)
 	p := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true), protocol.ItemAxe)
+	if msg, ok := w.Equip(context.Background(), "p1", protocol.ItemAxe); !ok {
+		t.Fatalf("could not take up the axe: %s", msg)
+	}
 	standBeside(t, w, p, tree)
 	w.SetInteract("p1", tree.ID)
 	for i := 0; i < chopTicks+4; i++ {
@@ -74,6 +77,9 @@ func TestSwordAddsAttackAndDamage(t *testing.T) {
 		p := w.UpsertPlayer(NewPlayerRec(id, "Kyle"), true)
 		if withSword {
 			withTools(p, protocol.ItemSword)
+			if _, ok := w.Equip(context.Background(), id, protocol.ItemSword); !ok {
+				t.Fatal("could not wield the sword")
+			}
 		}
 		p.X, p.Y = npc.X, npc.Y-1
 		w.SetAttack(id, npc.ID)
@@ -170,7 +176,7 @@ func TestEveryVerbHasOneTool(t *testing.T) {
 		}
 	}
 	// Work with no tool requirement stays unblocked.
-	if !hasTool(nil, "forage") {
+	if !wielding(&Player{}, "forage") {
 		t.Error("foraging should need no tool")
 	}
 }

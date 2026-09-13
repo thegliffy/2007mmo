@@ -190,7 +190,7 @@ func (w *World) tickCombat(ctx context.Context, p *Player) {
 
 	// You swing first. Landing the killing blow means taking nothing back,
 	// which is why a fight you can only just win is still worth having.
-	atk, dmg := bestWeapon(p.Inv)
+	atk, dmg := weaponBonus(p)
 	dealt := meleeDamage(skillLevel(p, protocol.SkillMelee)+atk) + dmg
 	if dealt > npc.HP {
 		dealt = npc.HP
@@ -207,7 +207,7 @@ func (w *World) tickCombat(ctx context.Context, p *Player) {
 
 	// Defense trains on the raw force of the blow, not on what got past
 	// it, so getting better at absorbing does not slow down the learning.
-	taken := damageAfterDefense(npc.Dmg, skillLevel(p, protocol.SkillDefense))
+	taken := damageAfterDefense(npc.Dmg, skillLevel(p, protocol.SkillDefense)+armourBonus(p))
 	if lv, up := addSkillXP(p.Skills, protocol.SkillDefense, npc.Dmg*defenseXPPerDamage); up {
 		w.note(p.ID, fmt.Sprintf("Defense is now level %d.", lv))
 	}

@@ -22,6 +22,7 @@
     chest: null,
     bankSlots: 20,
     heldTool: null,
+    equipSlots: [],
     last: null,
     prevPos: {},
     lastTickAt: 0,
@@ -154,6 +155,7 @@
         state.you = msg.you;
         state.items = msg.items || {};
       state.skillInfo = msg.skillInfo || {};
+      state.equipSlots = msg.equipSlots || [];
       // Every node's position and kind, sent once. State frames carry only
       // the ones that are not at rest.
       state.baseNodes = msg.nodes || [];
@@ -188,6 +190,7 @@
         renderSkills();
         renderVitals();
         renderInv();
+        renderEquipped();
         if (state.shop) renderShop();
         if (state.chest) renderChest();
         $("tickinfo").textContent = "tick " + msg.n + " · " + msg.online + " online · " + (msg.ms || 0).toFixed(1) + "ms";
@@ -464,6 +467,42 @@
     }
   }
 
+  // What is worn, and what each slot is for.
+  const SLOT_LABEL = { hand: "Hand", body: "Body" };
+
+  function renderEquipped() {
+    const el = $("equipped");
+    if (!el) return;
+    const worn = (state.you && state.you.equipped) || {};
+    const slots = state.equipSlots.length ? state.equipSlots : ["hand", "body"];
+    el.innerHTML = slots
+      .map((slot) => {
+        const id = worn[slot];
+        const info = id ? state.items[id] || { name: id, glyph: "?" } : null;
+        const label = SLOT_LABEL[slot] || slot;
+        if (!info) {
+          return '<div class="equipslot empty"><span class="where">' + esc(label) + "</span></div>";
+        }
+        const bonus = [];
+        if (info.attack) bonus.push("+" + info.attack + " atk");
+        if (info.damage) bonus.push("+" + info.damage + " dmg");
+        if (info.defense) bonus.push("+" + info.defense + " def");
+        return (
+          '<div class="equipslot" data-slot="' + esc(slot) + '" title="' + esc(info.name) +
+          (bonus.length ? " — " + bonus.join(", ") : "") + '">' +
+          '<span class="what">' + esc(info.glyph) + "</span>" +
+          '<span class="where">' + esc(label) + "</span></div>"
+        );
+      })
+      .join("");
+  }
+
+  $("equipped").addEventListener("click", (e) => {
+    const slot = e.target.closest(".equipslot");
+    if (!slot || !slot.dataset.slot) return;
+    send({ t: "unequip", id: slot.dataset.slot });
+  });
+
   function heldToolItem() {
     const inv = (state.you && state.you.inv) || [];
     if (state.heldTool == null) return null;
@@ -481,6 +520,11 @@
       return;
     }
     const info = state.items[slot.dataset.id] || {};
+    if (info.slot) {
+      send({ t: "equip", id: slot.dataset.id });
+      state.heldTool = null;
+      return;
+    }
     if (info.tool && info.verb) {
       // Take it in hand; the next click on the world says what to use it on.
       const i = Number(slot.dataset.slot);
@@ -562,25 +606,6 @@
         const pile = state.ground.find((g) => g.x === t.x && g.y === t.y);
         if (pile) {
           send({ t: "light", id: pile.id });
-          state.heldTool = null;
-          renderInv();
-          return;
-        }
-      }
-      if (info.verb === "chop") {
-        const tree = state.nodes.find((n) => n.kind === "tree" && n.x === t.x && n.y === t.y);
-        if (tree) {
-          send({ t: "interact", id: tree.id });
-          state.heldTool = null;
-          renderInv();
-          return;
-        }
-      }
-      if (info.verb === "mine") {
-        const vein = state.nodes.find((n) =>
-          (n.kind === "copper" || n.kind === "tin") && n.x === t.x && n.y === t.y);
-        if (vein) {
-          send({ t: "interact", id: vein.id });
           state.heldTool = null;
           renderInv();
           return;

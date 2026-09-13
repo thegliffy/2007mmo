@@ -35,6 +35,8 @@ const (
 	cmdSell
 	cmdDeposit
 	cmdWithdraw
+	cmdEquip
+	cmdUnequip
 	cmdChat
 	cmdLeave
 	cmdLooks
@@ -228,8 +230,24 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
 			}
 		}
+	case cmdEquip:
+		if text, ok := h.World.Equip(ctx, c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
 	case cmdDeposit:
 		if text, ok := h.World.Deposit(ctx, c.playerID, c.id, c.n); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdUnequip:
+		if text, ok := h.World.Unequip(ctx, c.playerID, c.id); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
 			if ok {
 				h.metrics.AddAction()
@@ -345,6 +363,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		You:          h.World.Snapshot(p.ID).You,
 		Items:        protocol.Catalog(),
 		Skills:       protocol.SkillCatalog(),
+		EquipSlots:   protocol.EquipSlots(),
 		LooksCatalog: protocol.AppearanceCatalog(),
 		BankSlots:    protocol.BankSlots,
 	})
@@ -670,6 +689,10 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdDrop, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgLight:
 			c.hub.cmds <- cmd{kind: cmdLight, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgEquip:
+			c.hub.cmds <- cmd{kind: cmdEquip, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgUnequip:
+			c.hub.cmds <- cmd{kind: cmdUnequip, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgBuy:
 			c.hub.cmds <- cmd{kind: cmdBuy, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgSell:

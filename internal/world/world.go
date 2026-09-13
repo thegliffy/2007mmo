@@ -88,6 +88,7 @@ type Player struct {
 	Coins        int
 	BankCoins    int
 	Looks        protocol.Looks
+	Equipped     map[string]string
 	Target       string
 	LastChat     uint64
 	Dirty        bool
@@ -236,10 +237,10 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		hp = *rec.HP
 	}
 	p := &Player{
-		ID:     rec.ID,
-		Name:   SanitizeName(rec.Name),
-		X:      rec.X,
-		Y:      rec.Y,
+		ID:        rec.ID,
+		Name:      SanitizeName(rec.Name),
+		X:         rec.X,
+		Y:         rec.Y,
 		Inv:       append([]ItemStack(nil), rec.Inv...),
 		Bank:      append([]ItemStack(nil), rec.Bank...),
 		Skills:    rec.Skills,
@@ -248,7 +249,8 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		Coins:     rec.Coins,
 		BankCoins: rec.BankCoins,
 		Looks:     rec.Looks,
-		Online: online,
+		Equipped:  copyEquipped(rec.Equipped),
+		Online:    online,
 	}
 	if !w.Walkable(p.X, p.Y) {
 		p.X, p.Y = spawnX, spawnY
@@ -575,16 +577,16 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			return
 		}
 		if n.Kind == KindTree {
-			if !hasTool(p.Inv, "chop") {
-				w.note(p.ID, "You would need an axe for that.")
+			if !wielding(p, "chop") {
+				w.note(p.ID, "You would need an axe in hand for that.")
 				p.ActionNode = ""
 				return
 			}
 			p.Action = protocol.ActionChop
 			p.ActionTicks = chopTicks
 		} else if n.Kind == KindCopper || n.Kind == KindTin {
-			if !hasTool(p.Inv, "mine") {
-				w.note(p.ID, "You would need a pick for that.")
+			if !wielding(p, "mine") {
+				w.note(p.ID, "You would need a pick in hand for that.")
 				p.ActionNode = ""
 				return
 			}
@@ -996,6 +998,7 @@ func (w *World) youView(p *Player) protocol.YouView {
 		Coins:     p.Coins,
 		Bank:      bankView(p.Bank),
 		BankCoins: p.BankCoins,
+		Equipped:  copyEquipped(p.Equipped),
 		Target:    p.Target,
 	}
 }
@@ -1124,29 +1127,6 @@ func countItem(inv []ItemStack, id string) int {
 		}
 	}
 	return n
-}
-
-// hasTool reports whether the pack holds the tool a piece of work needs.
-// Carrying it is enough — there is no equip slot, so a tool in the pack is
-// a tool in the hand.
-func hasTool(inv []ItemStack, verb string) bool {
-	need := protocol.ToolFor(verb)
-	return need == "" || countItem(inv, need) > 0
-}
-
-// bestWeapon returns the attack and damage of the best blade in the pack.
-func bestWeapon(inv []ItemStack) (attack, damage int) {
-	cat := protocol.Catalog()
-	for _, it := range inv {
-		info, ok := cat[it.ID]
-		if !ok || !info.Tool {
-			continue
-		}
-		if info.Attack+info.Damage > attack+damage {
-			attack, damage = info.Attack, info.Damage
-		}
-	}
-	return attack, damage
 }
 
 // addItem puts n of an item in the pack. Tools take a slot each and never

@@ -28,6 +28,8 @@ const (
 	MsgSell     = "sell"
 	MsgDeposit  = "deposit"
 	MsgWithdraw = "withdraw"
+	MsgEquip    = "equip"
+	MsgUnequip  = "unequip"
 	MsgPing     = "ping"
 
 	MsgWelcome = "welcome"
@@ -66,10 +68,11 @@ const (
 
 	// Tools. One to a slot, never stacked, and required for the work they
 	// are for rather than merely helpful at it.
-	ItemAxe   = "axe"
-	ItemFlint = "flint"
-	ItemSword = "sword"
-	ItemPick  = "pick"
+	ItemAxe    = "axe"
+	ItemFlint  = "flint"
+	ItemSword  = "sword"
+	ItemPick   = "pick"
+	ItemJerkin = "jerkin"
 
 	// Metal. Copper and tin smelt together into a bronze bar; the bar
 	// forges into a knife. One beginner loop, not a skill tree.
@@ -77,6 +80,11 @@ const (
 	ItemTin    = "tin"
 	ItemBar    = "bar"
 	ItemKnife  = "knife"
+
+	// Equipment slots. One item to a slot, and an equipped item is out of
+	// the pack — which is what makes wearing something a choice.
+	SlotHand = "hand"
+	SlotBody = "body"
 
 	SkillForage  = "forage"
 	SkillCook    = "cook"
@@ -160,7 +168,9 @@ type YouView struct {
 	// Bank is this player's chest only. It never appears on PlayerView.
 	Bank      []Item `json:"bank"`
 	BankCoins int    `json:"bankCoins"`
-	Target    string `json:"target,omitempty"`
+	// Equipped maps slot to item id.
+	Equipped map[string]string `json:"equipped,omitempty"`
+	Target   string            `json:"target,omitempty"`
 }
 
 // GroundView is a pile lying in the grass.
@@ -242,22 +252,27 @@ type ItemInfo struct {
 	// Verb is the work this tool makes possible: "chop", "light". The
 	// client uses it to know what a held tool can be pointed at.
 	Verb string `json:"verb,omitempty"`
-	// Attack counts as extra Melee levels; Damage is added flat on top.
-	Attack int `json:"attack,omitempty"`
-	Damage int `json:"damage,omitempty"`
+	// Slot is where it is worn, empty if it cannot be equipped.
+	Slot string `json:"slot,omitempty"`
+	// Attack and Defense count as extra Melee and Defense levels; Damage is
+	// added flat on top of the swing.
+	Attack  int `json:"attack,omitempty"`
+	Damage  int `json:"damage,omitempty"`
+	Defense int `json:"defense,omitempty"`
 }
 
 type Welcome struct {
-	T        string               `json:"t"`
-	Handle   string               `json:"handle"`
-	Username string               `json:"username"`
-	TickMs   int                  `json:"tickMs"`
-	World    string               `json:"world"`
-	Map      TileMap              `json:"map"`
-	Nodes    []NodeView           `json:"nodes"`
-	You      YouView              `json:"you"`
-	Items    map[string]ItemInfo  `json:"items"`
-	Skills   map[string]SkillInfo `json:"skillInfo"`
+	T          string               `json:"t"`
+	Handle     string               `json:"handle"`
+	Username   string               `json:"username"`
+	TickMs     int                  `json:"tickMs"`
+	World      string               `json:"world"`
+	Map        TileMap              `json:"map"`
+	Nodes      []NodeView           `json:"nodes"`
+	You        YouView              `json:"you"`
+	Items      map[string]ItemInfo  `json:"items"`
+	Skills     map[string]SkillInfo `json:"skillInfo"`
+	EquipSlots []string             `json:"equipSlots"`
 	// LooksCatalog lets a returning client paint peers without a second
 	// round-trip to the creator endpoint.
 	LooksCatalog LooksCatalog `json:"looksCatalog,omitempty"`
@@ -390,17 +405,26 @@ func Catalog() map[string]ItemInfo {
 		ItemLog:     {Name: "Log", Glyph: "Lg"},
 		ItemPaper:   {Name: "Paper", Glyph: "Pa"},
 
-		ItemAxe:   {Name: "Woodsman's axe", Glyph: "Ax", Tool: true, Verb: "chop"},
-		ItemFlint: {Name: "Flint and steel", Glyph: "Fs", Tool: true, Verb: "light"},
-		ItemSword: {Name: "Briar sword", Glyph: "Sw", Tool: true, Attack: 4, Damage: 1},
-		ItemPick:  {Name: "Quarry pick", Glyph: "Pk", Tool: true, Verb: "mine"},
+		ItemAxe:    {Name: "Woodsman's axe", Glyph: "Ax", Tool: true, Verb: "chop", Slot: SlotHand},
+		ItemFlint:  {Name: "Flint and steel", Glyph: "Fs", Tool: true, Verb: "light"},
+		ItemSword:  {Name: "Briar sword", Glyph: "Sw", Tool: true, Slot: SlotHand, Attack: 4, Damage: 1},
+		ItemPick:   {Name: "Quarry pick", Glyph: "Pk", Tool: true, Verb: "mine", Slot: SlotHand},
+		ItemJerkin: {Name: "Leather jerkin", Glyph: "Jk", Tool: true, Slot: SlotBody, Defense: 6},
 
 		ItemCopper: {Name: "Copper ore", Glyph: "Cu"},
 		ItemTin:    {Name: "Tin ore", Glyph: "Sn"},
 		ItemBar:    {Name: "Bronze bar", Glyph: "Br"},
-		ItemKnife:  {Name: "Bronze knife", Glyph: "Kn", Tool: true, Attack: 2, Damage: 1},
+		ItemKnife:  {Name: "Bronze knife", Glyph: "Kn", Tool: true, Slot: SlotHand, Attack: 2, Damage: 1},
 	}
 }
+
+// EquipSlot is where an item is worn, or empty if it is not equipment.
+func EquipSlot(id string) string {
+	return Catalog()[id].Slot
+}
+
+// EquipSlots is every slot, in the order the client should show them.
+func EquipSlots() []string { return []string{SlotHand, SlotBody} }
 
 // IsTool reports whether an item occupies a slot of its own.
 func IsTool(id string) bool {
