@@ -112,6 +112,8 @@ type GroundView struct {
 	Y     int    `json:"y"`
 	Label string `json:"label"`
 	Coins int    `json:"coins,omitempty"`
+	// Mine marks a pile still reserved for the player being sent it.
+	Mine bool `json:"mine,omitempty"`
 }
 
 type NodeView struct {

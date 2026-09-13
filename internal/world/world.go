@@ -754,11 +754,18 @@ func (w *World) Snapshot(id string) protocol.State {
 			Left:  n.Remaining,
 		})
 	}
+	// A reserved pile is left out of everyone else's snapshot entirely,
+	// rather than sent and then refused: nobody should be able to see that
+	// someone nearby just got lucky.
 	ground := make([]protocol.GroundView, 0, len(w.Ground))
 	items := protocol.Catalog()
 	for _, g := range w.Ground {
+		if !g.visibleTo(id) {
+			continue
+		}
 		ground = append(ground, protocol.GroundView{
 			ID: g.ID, X: g.X, Y: g.Y, Label: g.label(items), Coins: g.Coins,
+			Mine: g.private() && g.Owner == id,
 		})
 	}
 	return protocol.State{

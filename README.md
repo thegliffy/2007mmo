@@ -92,8 +92,9 @@ Overkill does not pay: hitting a beast with 1 hp left earns experience for 1.
 | **Brambleback** | 12–25 | 1 in 6 |
 
 Loot is **left where the beast fell**, not teleported into your pack. Click the
-sack to walk over and gather it. Right-click anything in your pack to set it
-down at your feet, and anyone can pick it up.
+sack to walk over and gather it — it is yours alone for the first minute, and
+anyone's for the two after that. Right-click anything in your pack to set it
+down at your feet, under the same rule.
 
 **Coins never take a pack slot.** They live in a purse on the player record, not
 as an item, so filling your bag with brambleberries costs you nothing in coin.
@@ -119,10 +120,27 @@ against. Persisting them would buy dropped items surviving a restart that loses
 nothing else, at the cost of a second transaction inside the tick and a genuinely
 hard ordering problem.
 
-Piles merge on a tile, vanish after ~2 minutes, and are capped at 64 so a bored
-player cannot grow the map forever. There is **no ownership**: whoever reaches a
-pile first takes it. With PvP out of scope and single-digit players that is a
-deliberate simplification, not an oversight.
+A pile has three lives:
+
+| | |
+|---|---|
+| **0–60s** | only the person who left it can see or take it |
+| **60s–180s** | anyone can |
+| **after 180s** | it is gone |
+
+The reserved window is a **visibility** rule, not just a refusal. A pile that is
+not yours is left out of your snapshot entirely, so nobody can watch someone
+else get lucky and stand waiting over the spot. The server still refuses a
+pickup it never advertised, because the client is not to be trusted about which
+piles it knows.
+
+Piles merge on a tile, but only where that cannot leak: into a pile already
+public, or one reserved for the same person. Two people dropping on one tile get
+two separate sacks, each invisible to the other, and those fold into one once
+both go public. Topping up a public pile does **not** reserve it again —
+otherwise a berry a minute would hold a tile forever.
+
+Capped at 64 piles, so a bored player cannot grow the map.
 
 The loot roll is the only randomness in the world, and it is owned by the
 `World` rather than a global so a test can pin the seed. Nothing about crash

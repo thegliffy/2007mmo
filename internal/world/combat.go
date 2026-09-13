@@ -223,7 +223,7 @@ func (w *World) fellNPC(_ context.Context, npc *NPC, p *Player) {
 	if p != nil {
 		p.Target = ""
 		p.Action = "idle"
-		w.note(p.ID, strings.TrimSpace("The "+npc.Name+" slumps into the bracken. "+w.spillDrops(npc)))
+		w.note(p.ID, strings.TrimSpace("The "+npc.Name+" slumps into the bracken. "+w.spillDrops(npc, p.ID)))
 	}
 	for _, other := range w.Players {
 		if other != nil && other.Target == npc.ID {
@@ -238,7 +238,7 @@ func (w *World) fellNPC(_ context.Context, npc *NPC, p *Player) {
 // spillDrops rolls what a fallen beast was carrying and leaves it where it
 // fell. Nothing is committed here: a pile is memory-only, and the item
 // only becomes real when somebody picks it up and that write lands.
-func (w *World) spillDrops(npc *NPC) string {
+func (w *World) spillDrops(npc *NPC, killer string) string {
 	coins := 0
 	if npc.CoinsMax > 0 {
 		lo, hi := npc.CoinsMin, npc.CoinsMax
@@ -254,11 +254,11 @@ func (w *World) spillDrops(npc *NPC) string {
 	if npc.LeatherOdds > 0 && w.roll(npc.LeatherOdds) == 0 {
 		inv = append(inv, ItemStack{ID: protocol.ItemLeather, N: 1})
 	}
-	g := w.dropPile(npc.X, npc.Y, inv, coins)
+	g := w.dropPile(npc.X, npc.Y, inv, coins, killer)
 	if g == nil {
 		return ""
 	}
-	return "It leaves " + g.label(protocol.Catalog()) + " in the grass."
+	return "It leaves " + g.label(protocol.Catalog()) + " in the grass, yours for a minute."
 }
 
 // roll returns a value in [0,n). A world without a seeded roller — one

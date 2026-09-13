@@ -688,6 +688,14 @@
       ctx.fill();
       ctx.fillStyle = "#3d2412";
       ctx.fillRect(px + tw * 0.38, py + th * 0.4, tw * 0.24, 3);
+      // Still reserved for you: a soft ring so it reads as "mine for now".
+      if (g.mine) {
+        ctx.strokeStyle = "rgba(250,225,150," + (0.45 + 0.3 * flicker) + ")";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(px + tw / 2, py + th * 0.72, tw * 0.36, th * 0.2, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       if (g.coins > 0) {
         ctx.fillStyle = "hsl(45,80%," + Math.floor(50 + 12 * flicker) + "%)";
         ctx.beginPath();
