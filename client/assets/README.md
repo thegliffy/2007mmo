@@ -6,8 +6,8 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 | Kind | Size | Notes |
 |---|---|---|
 | Terrain tiles | **64×64** | Replace procedural fills; map advisory tileSize=32 — scale as needed |
-| Props / gather / buildings | **96×96** (house **192×192**) | Anchor at tile bottom-center |
-| Characters (NPC/hostile/player) | **64×96** | Feet near bottom; ¾ facing |
+| Props / gather / buildings | **96×96** (house **192×192**) | Ground diamond of the plate maps onto the tile diamond (see `client/iso.js`) |
+| Characters (NPC/hostile/player) | **64×96** | Opaque bottom-centre (feet) maps to iso project of tile centre |
 | Paperdoll masks | **128×~192** | Tint in client or use pre-tinted `skin_*` / `tunic_*` / hair masks |
 
 ## Map glyph → asset

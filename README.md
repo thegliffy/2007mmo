@@ -360,7 +360,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=ad-iso` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=iso-grid` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 

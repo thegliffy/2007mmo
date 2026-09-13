@@ -1,9 +1,41 @@
 // ¾ / 2:1 hamlet projection + chase camera.
 // Gameplay stays on integer tile (x, y). This file only maps those
 // onto the canvas and back. Shared with scripts/iso-test.js (node).
+//
+// ANCHOR CONVENTION
+// -----------------
+// Every cell is a 2:1 diamond. For integer tile (tx, ty):
+//
+//   north  = project(tx,     ty)
+//   east   = project(tx + 1, ty)
+//   south  = project(tx + 1, ty + 1)   // diamond bottom of the cell
+//   west   = project(tx,     ty + 1)
+//   centre = project(tx + 0.5, ty + 0.5)
+//
+// tileFeet === tileCenter === centre. That is the world foot point
+// for a 1×1 object: the iso project of the tile centre.
+//
+//   • Figures (player, NPCs, hostiles): the sprite's opaque
+//     bottom-centre (the authored feet) maps onto that foot point.
+//   • ¾ prop / gather / building plates: the plate's ground diamond
+//     (opaque width × half that, sitting on the opaque bottom) is
+//     scaled onto this cell's diamond, so the object sits on the
+//     same grid as the terrain.
+//   • Terrain cubes: the cube's top face (opaque top × opaque width)
+//     is the walking diamond — it is scaled onto this cell's diamond.
+//   • The cottage is a 2×2 plate. NW tile is the first H (3, 4);
+//     the hearth at (4, 5) is the SE cell. Same diamond rule on the
+//     2×2 cluster (width 2·TW, height 2·TH).
+//
+// Camera offsets are snapped to integer pixels so tiles and plates
+// cannot drift a half-pixel apart while the chase eases.
 (function (root) {
   const TW = 96;
   const TH = 48;
+
+  // Cottage 2×2, snapped to the hamlet H-block. idX/idY is the
+  // hearth tile — what a click on the roof reports.
+  const HOUSE = { x: 3, y: 4, w: 2, h: 2, idX: 4, idY: 5 };
 
   function project(x, y) {
     return {
@@ -21,8 +53,8 @@
   function cameraFollow(fx, fy, viewW, viewH) {
     const p = project(fx, fy);
     return {
-      x: viewW / 2 - p.x,
-      y: viewH * 0.58 - p.y,
+      x: Math.round(viewW / 2 - p.x),
+      y: Math.round(viewH * 0.58 - p.y),
     };
   }
 
@@ -63,9 +95,22 @@
     return toScreen(tx + 0.5, ty + 0.5, cam);
   }
 
+  // World foot of a 1×1 object: the centre of that tile's diamond.
   function tileFeet(tx, ty, cam) {
-    const c = tileCenter(tx, ty, cam);
-    return { x: c.x, y: c.y + TH * 0.2 };
+    return tileCenter(tx, ty, cam);
+  }
+
+  function footprintDiamond(ox, oy, w, h, cam) {
+    return [
+      toScreen(ox, oy, cam),
+      toScreen(ox + w, oy, cam),
+      toScreen(ox + w, oy + h, cam),
+      toScreen(ox, oy + h, cam),
+    ];
+  }
+
+  function footprintCenter(ox, oy, w, h, cam) {
+    return toScreen(ox + w / 2, oy + h / 2, cam);
   }
 
   function inView(sx, sy, viewW, viewH, pad) {
@@ -76,6 +121,7 @@
   const api = {
     TW,
     TH,
+    HOUSE,
     project,
     unproject,
     cameraFollow,
@@ -86,6 +132,8 @@
     diamond,
     tileCenter,
     tileFeet,
+    footprintDiamond,
+    footprintCenter,
     inView,
   };
   root.HollowmereIso = api;
