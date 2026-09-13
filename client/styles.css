@@ -98,7 +98,7 @@ html, body {
   border: 3px inset #3d2412;
   padding: 3px;
 }
-#stage { display: block; image-rendering: auto; background: #1c140c; cursor: crosshair; width: 100%; height: auto; }
+#stage { display: block; image-rendering: pixelated; background: #14100c; cursor: crosshair; width: 100%; height: auto; }
 #crumbs {
   color: #e6c15a;
   font-size: 12px;

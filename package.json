@@ -6,7 +6,7 @@
     "start": "docker compose up --build",
     "up": "docker compose up --build",
     "down": "docker compose down",
-    "test": "go test ./... && node scripts/pick-npc-test.js && node scripts/sprites-test.js",
+    "test": "go test ./... && node scripts/pick-npc-test.js && node scripts/iso-test.js && node scripts/sprites-test.js",
     "world": "go run ./cmd/world",
     "bots": "go run ./cmd/bots -n 50 -addr ws://127.0.0.1:8080/ws",
     "bots:hotspot": "go run ./cmd/bots -n 200 -hotspot -duration 45s -addr ws://127.0.0.1:8080/ws",

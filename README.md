@@ -6,7 +6,7 @@ You walk a woodland hamlet, wave at other people, pick brambleberries and hazel 
 
 Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” labels.
 
-**Art pass:** still the **top-down** hamlet. AD sprites drop into [`client/assets/`](client/assets/README.md) and draw in the existing tiles. Wood + parchment HUD is tightened. No isometric camera.
+**Art pass:** **¾ isometric** hamlet with a **chase camera** on you. Chunky 2007-browser-MMO pixels — diamond tiles, readable silhouettes. AD sprites drop into [`client/assets/`](client/assets/README.md) (see `manifest.json`). Gameplay coordinates stay authoritative.
 
 by **thegliffy**
 
@@ -48,7 +48,7 @@ Week 1 is still the woodland-life cut under the new map.
 3. **Readable HUD.** Carved wood frame, parchment panels, recessed pack slots. Tightened typography and spacing on this art pass.
 4. **IP string pass.** UI copy is Hollowmere voice (stile, pack, hearth, millstone, woodland work). No generic clone labels in the client.
 
-**Camera:** still **top-down**. Sprites are a filename swap in [`client/assets/`](client/assets/README.md) — tiles, props, and hostiles draw in the existing cells. A ¾ view is paused.
+**Camera:** **¾ isometric** (2:1 diamonds). A chase camera follows the local player; the map is not stretched to fill the canvas. Sprites swap in via [`client/assets/manifest.json`](client/assets/manifest.json).
 
 ### Tools and the pack
 
@@ -360,7 +360,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=ad-hamlet` (and `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=ad-iso` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -497,11 +497,11 @@ internal/store     Postgres (accounts + packs) + Redis (sessions/presence)
 internal/auth      accounts, scrypt passwords, session issue/revoke
 internal/hub       WebSocket join / broadcast / limits / metrics / auth HTTP
 internal/protocol  shared JSON frames
-client/            carved wood + parchment HUD + top-down canvas hamlet
-client/assets/     AD drop: tiles, props, hostiles (filename swap)
+client/            carved wood + parchment HUD + ¾ isometric chase-cam hamlet
+client/assets/     AD pack: terrain, buildings, props, gather, hostiles, npcs, paperdoll
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
-scripts/           smoke, T3 helpers, metal-loop, no-dupe chaos, pick-npc-test, login helper, pg backup / restore / drill
+scripts/           smoke, T3 helpers, metal-loop, no-dupe chaos, pick-npc / iso / sprites tests, login helper, pg backup / restore / drill
 docker-compose.yml world + postgres + redis
 ```
 

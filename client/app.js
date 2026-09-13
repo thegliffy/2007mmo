@@ -35,6 +35,9 @@
     stopped: false,
     looksCatalog: null,
     draftLooks: null,
+    cam: null,
+    camFocus: null,
+    camSnap: true,
   };
 
   // The ?ws= override stays for local development only. On any other
@@ -159,6 +162,11 @@
         state.username = msg.username || null;
         if (msg.looksCatalog) state.looksCatalog = msg.looksCatalog;
         if (msg.bankSlots) state.bankSlots = msg.bankSlots;
+        state.cam = null;
+        state.camSnap = true;
+        state.camFocus = state.you
+          ? { x: state.you.x + 0.5, y: state.you.y + 0.5 }
+          : { x: 8.5, y: 8.5 };
         $("acct-name").textContent = state.username || "";
         $("gate").classList.add("hidden");
         $("looks").classList.add("hidden");
@@ -493,13 +501,42 @@
     send({ t: "drop", id: slot.dataset.id });
   });
 
+  function figuresNow() {
+    const out = [];
+    for (const n of state.npcs) out.push({ kind: "npc", e: n });
+    for (const p of state.players) out.push({ kind: "pl", e: p });
+    if (state.you) out.push({ kind: "you", e: state.you });
+    return out;
+  }
+
+  function ensureCam() {
+    if (state.cam) return state.cam;
+    const I = globalThis.HollowmereIso;
+    if (!I) return { x: 0, y: 0 };
+    const f = state.camFocus || (state.you
+      ? { x: state.you.x + 0.5, y: state.you.y + 0.5 }
+      : { x: 8.5, y: 8.5 });
+    state.cam = I.cameraFollow(f.x, f.y, canvas.width, canvas.height);
+    return state.cam;
+  }
+
+  // Canvas pixels → tile through the ¾ chase camera. Gameplay x/y
+  // stay the integer coordinates the server already knows.
   function tileAt(mx, my) {
     if (!state.map) return null;
     const r = canvas.getBoundingClientRect();
-    const x = Math.floor((mx - r.left) / (r.width / state.map.w));
-    const y = Math.floor((my - r.top) / (r.height / state.map.h));
-    if (x < 0 || y < 0 || x >= state.map.w || y >= state.map.h) return null;
-    return { x, y };
+    const sx = (mx - r.left) * (canvas.width / r.width);
+    const sy = (my - r.top) * (canvas.height / r.height);
+    const cam = ensureCam();
+    const art = globalThis.HollowmereArt;
+    if (art && art.hitTile) {
+      return art.hitTile(sx, sy, cam, state.map, state.nodes, figuresNow());
+    }
+    const I = globalThis.HollowmereIso;
+    if (!I) return null;
+    const t = I.screenToTile(sx, sy, cam);
+    if (t.x < 0 || t.y < 0 || t.x >= state.map.w || t.y >= state.map.h) return null;
+    return t;
   }
 
   // Right-click a pile to set it alight, mirroring the pack where
@@ -658,6 +695,9 @@
     state.ws = null;
     state.you = null;
     state.map = null;
+    state.cam = null;
+    state.camFocus = null;
+    state.camSnap = true;
     $("looks").classList.add("hidden");
     closeShop();
     closeChest();
@@ -931,11 +971,17 @@
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawPaperdoll(ctx, canvas.width / 2, canvas.height * 0.62, 22, state.draftLooks || defaultDraft(), true);
+    ctx.fillStyle = "#4f8236";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const art = globalThis.HollowmereArt;
+    const looks = state.draftLooks || defaultDraft();
+    if (art && art.drawPaperdoll) {
+      art.drawPaperdoll(ctx, canvas.width / 2, canvas.height * 0.82, 20, looks, true);
+    }
     ctx.fillStyle = "#3d2412";
-    ctx.font = "14px Georgia";
+    ctx.font = "14px Georgia, serif";
     ctx.textAlign = "center";
-    ctx.fillText(state.username || "Wanderer", canvas.width / 2, 28);
+    ctx.fillText(state.username || "Wanderer", canvas.width / 2, 26);
   }
 
   async function loadLooksDesk() {
@@ -983,435 +1029,31 @@
     if (state.ws && state.ws.readyState === 1) send({ t: "ping", ts: Date.now() });
   }, 15000);
 
-  function lerp(a, b, u) { return a + (b - a) * u; }
-
-  function posOf(id, x, y, u) {
-    const p = state.prevPos[id];
-    if (!p) return { x, y };
-    return { x: lerp(p.px, x, u), y: lerp(p.py, y, u) };
-  }
-
   function draw() {
     requestAnimationFrame(draw);
-    const m = state.map;
-    if (!m) {
-      ctx.fillStyle = "#3d5a28";
+    const art = globalThis.HollowmereArt;
+    if (!art || !art.drawWorld) {
+      ctx.fillStyle = "#1c140c";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#f3e2c7";
-      ctx.font = "16px Trebuchet MS";
-      ctx.fillText("Waiting at the stile…", 24, 40);
       return;
     }
-    // Derive from the canvas, not m.tile: the canvas is a fixed size and
-    // the map dimensions decide the rest. m.tile is advisory only.
-    const tw = canvas.width / m.w;
-    const th = canvas.height / m.h;
-    const now = performance.now();
-    const u = Math.min(1, (now - state.lastTickAt) / state.tickMs);
-    const flicker = 0.5 + 0.5 * Math.sin(now / 90);
-
-    for (let y = 0; y < m.h; y++) {
-      const row = m.tiles[y] || "";
-      for (let x = 0; x < m.w; x++) {
-        const g = row[x] || ".";
-        const px = x * tw, py = y * th;
-        const scars = x >= 27;
-        switch (g) {
-          case "#":
-            ctx.fillStyle = "#4a4035";
-            ctx.fillRect(px, py, tw, th);
-            ctx.fillStyle = "#3a3228";
-            ctx.fillRect(px + 2, py + 2, tw - 4, th - 4);
-            break;
-          case "T":
-            ctx.fillStyle = "#4f7a34";
-            ctx.fillRect(px, py, tw, th);
-            ctx.fillStyle = "#6b3e1a";
-            ctx.fillRect(px + tw * 0.4, py + th * 0.45, tw * 0.2, th * 0.5);
-            ctx.fillStyle = "#245218";
-            ctx.beginPath();
-            ctx.arc(px + tw * 0.5, py + th * 0.38, tw * 0.38, 0, Math.PI * 2);
-            ctx.fill();
-            break;
-          case "~":
-            ctx.fillStyle = "#2d5f94";
-            ctx.fillRect(px, py, tw, th);
-            ctx.strokeStyle = "rgba(180,220,255,0.35)";
-            ctx.beginPath();
-            ctx.moveTo(px, py + th * 0.4);
-            ctx.quadraticCurveTo(px + tw * 0.5, py + th * (0.25 + 0.1 * flicker), px + tw, py + th * 0.4);
-            ctx.stroke();
-            break;
-          case "P":
-            ctx.fillStyle = scars ? "#8a7350" : "#c2a36b";
-            ctx.fillRect(px, py, tw, th);
-            ctx.fillStyle = scars ? "#6a5340" : "#b08950";
-            ctx.fillRect(px + 4, py + 8, 3, 3);
-            break;
-          case "H":
-          case "*":
-            ctx.fillStyle = "#b08968";
-            ctx.fillRect(px, py, tw, th);
-            break;
-          case "E":
-            ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
-            ctx.fillRect(px, py, tw, th);
-            ctx.fillStyle = "#6b4423";
-            ctx.fillRect(px + 3, py + th * 0.55, tw - 6, th * 0.28);
-            break;
-          case "C":
-          case "N":
-          case "K":
-          case "A":
-            ctx.fillStyle = (x + y) % 2 ? "#6a5a3c" : "#5a4a30";
-            ctx.fillRect(px, py, tw, th);
-            break;
-          case "B":
-          case "Z":
-          case "M":
-            ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
-            ctx.fillRect(px, py, tw, th);
-            break;
-          default:
-            if (scars) {
-              ctx.fillStyle = (x + y) % 2 ? "#6e5a40" : "#5c4a34";
-            } else {
-              ctx.fillStyle = (x + y) % 2 ? "#5a8f3c" : "#4f8236";
-            }
-            ctx.fillRect(px, py, tw, th);
-        }
-        const spr = globalThis.HollowmereSprites;
-        if (spr) {
-          const tkey = spr.tileKey(g, scars);
-          const covered = spr.tile(ctx, tkey, px, py, tw, th);
-          if (g === "T") {
-            if (!spr.prop(ctx, "props/tree", px, py, tw, th) && covered) {
-              ctx.fillStyle = "#6b3e1a";
-              ctx.fillRect(px + tw * 0.4, py + th * 0.45, tw * 0.2, th * 0.5);
-              ctx.fillStyle = "#245218";
-              ctx.beginPath();
-              ctx.arc(px + tw * 0.5, py + th * 0.38, tw * 0.38, 0, Math.PI * 2);
-              ctx.fill();
-            }
-          }
-          if (x === 8 && y === 8) spr.prop(ctx, "props/stile", px, py, tw, th);
-        }
-      }
-    }
-
-    for (const n of state.nodes) {
-      const px = n.x * tw, py = n.y * th;
-      const spr = globalThis.HollowmereSprites;
-      const skey = spr && spr.nodeKey(n);
-      if (skey && spr.prop(ctx, skey, px, py, tw, th)) {
-        if (n.kind === "fire" && n.burns > 0) {
-          const life = Math.max(0, Math.min(1, n.burns / 150));
-          ctx.fillStyle = "rgba(40,24,12,0.75)";
-          ctx.fillRect(px + 4, py + th - 6, tw - 8, 3);
-          ctx.fillStyle = "hsl(28,80%,55%)";
-          ctx.fillRect(px + 4, py + th - 6, (tw - 8) * life, 3);
-        }
-        continue;
-      }
-      if (n.kind === "bush") {
-        ctx.fillStyle = n.ready ? "#2f5a22" : "#3a4a30";
-        ctx.beginPath();
-        ctx.ellipse(px + tw / 2, py + th * 0.62, tw * 0.38, th * 0.28, 0, 0, Math.PI * 2);
-        ctx.fill();
-        if (n.ready) {
-          ctx.fillStyle = "#b33";
-          ctx.fillRect(px + tw * 0.3, py + th * 0.48, 4, 4);
-          ctx.fillRect(px + tw * 0.55, py + th * 0.58, 4, 4);
-        }
-      } else if (n.kind === "hazel") {
-        ctx.fillStyle = n.ready ? "#3d5a22" : "#3a4a30";
-        ctx.beginPath();
-        ctx.ellipse(px + tw / 2, py + th * 0.6, tw * 0.34, th * 0.26, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#6b3e1a";
-        ctx.fillRect(px + tw * 0.45, py + th * 0.22, tw * 0.12, th * 0.28);
-        if (n.ready) {
-          ctx.fillStyle = "#c4a36a";
-          ctx.beginPath();
-          ctx.arc(px + tw * 0.38, py + th * 0.55, 3, 0, Math.PI * 2);
-          ctx.arc(px + tw * 0.62, py + th * 0.62, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (n.kind === "mill") {
-        ctx.fillStyle = "#8a8070";
-        ctx.beginPath();
-        ctx.arc(px + tw / 2, py + th / 2, tw * 0.36, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#4a4035";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(px + tw / 2, py + th / 2, tw * 0.2, 0, Math.PI * 2);
-        ctx.moveTo(px + tw / 2, py + th * 0.22);
-        ctx.lineTo(px + tw / 2, py + th * 0.78);
-        ctx.stroke();
-      } else if (n.kind === "tree") {
-        // The map already paints a tree on this tile; when it has been
-        // chopped bare, cover it with a stump so it reads as spent.
-        if (!n.ready) {
-          ctx.fillStyle = (n.x + n.y) % 2 ? "#5a8f3c" : "#4f8236";
-          ctx.fillRect(px, py, tw, th);
-          ctx.fillStyle = "#6b3e1a";
-          ctx.beginPath();
-          ctx.ellipse(px + tw / 2, py + th * 0.62, tw * 0.22, th * 0.14, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = "#4a2a10";
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      } else if (n.kind === "copper" || n.kind === "tin") {
-        ctx.fillStyle = n.ready ? "#6a5340" : "#4a4035";
-        ctx.beginPath();
-        ctx.moveTo(px + tw * 0.18, py + th * 0.72);
-        ctx.lineTo(px + tw * 0.38, py + th * 0.28);
-        ctx.lineTo(px + tw * 0.68, py + th * 0.32);
-        ctx.lineTo(px + tw * 0.84, py + th * 0.7);
-        ctx.closePath();
-        ctx.fill();
-        if (n.ready) {
-          ctx.fillStyle = n.kind === "copper" ? "#c46a32" : "#c8c4b0";
-          ctx.fillRect(px + tw * 0.4, py + th * 0.48, 4, 4);
-          ctx.fillRect(px + tw * 0.55, py + th * 0.58, 3, 3);
-        }
-      } else if (n.kind === "kiln") {
-        ctx.fillStyle = "#3a2a22";
-        ctx.fillRect(px + 2, py + th * 0.18, tw - 4, th * 0.72);
-        ctx.fillStyle = "#1a140e";
-        ctx.fillRect(px + tw * 0.28, py + th * 0.42, tw * 0.44, th * 0.36);
-        ctx.fillStyle = "rgba(255," + Math.floor(90 + 70 * flicker) + ",20,0.95)";
-        ctx.fillRect(px + tw * 0.34, py + th * 0.48, tw * 0.32, th * 0.22);
-        ctx.fillStyle = "#c4a36a";
-        ctx.font = Math.max(9, Math.floor(th * 0.28)) + "px Trebuchet MS";
-        ctx.textAlign = "center";
-        ctx.fillText("kiln", px + tw / 2, py + th * 0.16);
-      } else if (n.kind === "anvil") {
-        ctx.fillStyle = "#2a2a2a";
-        ctx.fillRect(px + tw * 0.12, py + th * 0.38, tw * 0.76, th * 0.22);
-        ctx.fillRect(px + tw * 0.36, py + th * 0.56, tw * 0.28, th * 0.28);
-        ctx.fillStyle = "#8a8a8a";
-        ctx.fillRect(px + tw * 0.08, py + th * 0.3, tw * 0.84, th * 0.14);
-        ctx.fillStyle = "#c4a36a";
-        ctx.font = Math.max(9, Math.floor(th * 0.28)) + "px Trebuchet MS";
-        ctx.textAlign = "center";
-        ctx.fillText("anvil", px + tw / 2, py + th * 0.22);
-      } else if (n.kind === "chest") {
-        ctx.fillStyle = "#6b3e1a";
-        ctx.fillRect(px + tw * 0.16, py + th * 0.38, tw * 0.68, th * 0.46);
-        ctx.fillStyle = "#8a5a28";
-        ctx.fillRect(px + tw * 0.16, py + th * 0.28, tw * 0.68, th * 0.16);
-        ctx.fillStyle = "#c4a36a";
-        ctx.fillRect(px + tw * 0.44, py + th * 0.48, tw * 0.12, th * 0.1);
-        ctx.strokeStyle = "#3d2412";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px + tw * 0.16, py + th * 0.28, tw * 0.68, th * 0.56);
-        ctx.fillStyle = "#c4a36a";
-        ctx.font = Math.max(8, Math.floor(th * 0.22)) + "px Trebuchet MS";
-        ctx.textAlign = "center";
-        ctx.fillText("chest", px + tw / 2, py + th * 0.2);
-      } else if (n.kind === "fire") {
-        ctx.fillStyle = "#5a3a18";
-        ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);
-        ctx.fillStyle = "rgba(255," + Math.floor(120 + 80 * flicker) + ",20,0.95)";
-        ctx.beginPath();
-        ctx.moveTo(px + tw / 2, py + 6);
-        ctx.lineTo(px + tw * 0.28, py + th * 0.7);
-        ctx.lineTo(px + tw * 0.72, py + th * 0.7);
-        ctx.fill();
-        // A campfire dies down; show what is left of it.
-        if (n.burns > 0) {
-          const life = Math.max(0, Math.min(1, n.burns / 150));
-          ctx.fillStyle = "rgba(40,24,12,0.75)";
-          ctx.fillRect(px + 4, py + th - 6, tw - 8, 3);
-          ctx.fillStyle = "hsl(28,80%,55%)";
-          ctx.fillRect(px + 4, py + th - 6, (tw - 8) * life, 3);
-        }
-      }
-    }
-
-    for (const g of state.ground) {
-      const px = g.x * tw, py = g.y * th;
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
-      ctx.beginPath();
-      ctx.ellipse(px + tw / 2, py + th * 0.72, tw * 0.3, th * 0.16, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // A small sack; a coin glint on top when there is coin in it.
-      ctx.fillStyle = "#6b4423";
-      ctx.beginPath();
-      ctx.moveTo(px + tw * 0.32, py + th * 0.72);
-      ctx.lineTo(px + tw * 0.4, py + th * 0.44);
-      ctx.lineTo(px + tw * 0.6, py + th * 0.44);
-      ctx.lineTo(px + tw * 0.68, py + th * 0.72);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#3d2412";
-      ctx.fillRect(px + tw * 0.38, py + th * 0.4, tw * 0.24, 3);
-      // Still reserved for you: a soft ring so it reads as "mine for now".
-      if (g.mine) {
-        ctx.strokeStyle = "rgba(250,225,150," + (0.45 + 0.3 * flicker) + ")";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.ellipse(px + tw / 2, py + th * 0.72, tw * 0.36, th * 0.2, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (g.coins > 0) {
-        ctx.fillStyle = "hsl(45,80%," + Math.floor(50 + 12 * flicker) + "%)";
-        ctx.beginPath();
-        ctx.arc(px + tw * 0.5, py + th * 0.55, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    const figures = [];
-    for (const n of state.npcs) figures.push({ kind: "npc", e: n });
-    for (const p of state.players) figures.push({ kind: "pl", e: p });
-    if (state.you) figures.push({ kind: "you", e: state.you });
-    figures.sort((a, b) => a.e.y - b.e.y);
-
-    const targetId = state.you && state.you.target;
-    for (const f of figures) {
-      const e = f.e;
-      const p = posOf(e.id, e.x, e.y, u);
-      const px = p.x * tw + tw / 2;
-      const py = p.y * th + th * 0.62;
-      const hostile = f.kind === "npc" && e.hostile;
-      if (e.id && e.id === targetId) {
-        ctx.strokeStyle = "rgba(190,50,30,0.85)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(px, py + 10, 12, 6, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (f.kind === "npc") {
-        const spr = globalThis.HollowmereSprites;
-        const nkey = spr && spr.npcKey(e);
-        const drew = nkey && spr.figure(ctx, nkey, px, py, tw, th);
-        if (!drew) {
-          const hue = hostile ? 8 : 35;
-          ctx.fillStyle = "rgba(0,0,0,0.25)";
-          ctx.beginPath();
-          ctx.ellipse(px, py + 10, 9, 4, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "hsl(" + hue + "," + (hostile ? "55" : "45") + "%," + (hostile ? "28" : "38") + "%)";
-          ctx.fillRect(px - 7, py - 8, 14, 16);
-          if (hostile) {
-            ctx.fillStyle = "#5a2a18";
-            ctx.fillRect(px - 3, py - 16, 6, 5);
-          }
-          ctx.fillStyle = hostile ? "#d8b090" : "#f0d2b0";
-          ctx.beginPath();
-          ctx.arc(px, py - 12, 6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        drawPaperdoll(ctx, px, py, 8, e.looks || defaultDraft(), f.kind === "you");
-      }
-      ctx.fillStyle = f.kind === "you" ? "#fff4b0" : hostile ? "#f0c8a0" : "#f3e2c7";
-      ctx.font = "11px Trebuchet MS";
-      ctx.textAlign = "center";
-      ctx.fillText(e.name || "?", px, py - 22);
-      if (e.maxHp > 0 && (f.kind === "you" || hostile)) {
-        const hp = e.hp == null ? e.maxHp : e.hp;
-        const bw = 18;
-        const bh = 3;
-        const bx = px - bw / 2;
-        const by = py - 34;
-        ctx.fillStyle = "#2a160c";
-        ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-        ctx.fillStyle = "#5a381c";
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = hostile ? "#c44" : "#6a3";
-        ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, hp / e.maxHp)), bh);
-      }
-      if (e.action && e.action !== "idle" && e.action !== "walk") {
-        ctx.fillStyle = "#fff4b0";
-        ctx.fillText(actionVoice(e.action), px, py + 22);
-      }
-    }
-  }
-
-  function shadeHex(hex, amt) {
-    const n = String(hex || "").replace("#", "");
-    if (n.length < 6) return hex;
-    const k = (i) => Math.max(0, Math.min(255, Math.round(parseInt(n.slice(i, i + 2), 16) * amt)));
-    const h = (v) => v.toString(16).padStart(2, "0");
-    return "#" + h(k(0)) + h(k(2)) + h(k(4));
-  }
-
-  function drawHair(ctx, hx, hy, r, style, color) {
-    ctx.fillStyle = color;
-    if (style === "cropped") {
-      ctx.beginPath();
-      ctx.ellipse(hx, hy - r * 0.55, r * 0.95, r * 0.38, 0, Math.PI, 0);
-      ctx.fill();
-      return;
-    }
-    ctx.beginPath();
-    ctx.arc(hx, hy - r * 0.15, r * 1.05, Math.PI * 1.05, Math.PI * 1.95);
-    ctx.fill();
-    if (style === "tied") {
-      ctx.beginPath();
-      ctx.arc(hx + r * 0.85, hy - r * 0.15, r * 0.42, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (style === "long") {
-      ctx.fillRect(hx - r * 1.05, hy - r * 0.1, r * 0.42, r * 1.35);
-      ctx.fillRect(hx + r * 0.63, hy - r * 0.1, r * 0.42, r * 1.35);
-    }
-  }
-
-  // Stylized paperdoll: coloured blob with hair and a tunic until real
-  // 3D assets exist. Same function paints the creator preview and AOI.
-  function drawPaperdoll(ctx, cx, cy, s, looks, highlight) {
-    const l = looks || defaultDraft();
-    const skin = colorOf("skin", l.skin) || "#d4a574";
-    const top = colorOf("top", l.top) || "#4a6a32";
-    const hair = colorOf("hairColor", l.hairColor) || "#3d2412";
-    const unit = s / 8;
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + 10 * unit, 9 * unit, 4 * unit, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = shadeHex(skin, 0.78);
-    ctx.fillRect(cx - 5 * unit, cy + 2 * unit, 4 * unit, 8 * unit);
-    ctx.fillRect(cx + 1 * unit, cy + 2 * unit, 4 * unit, 8 * unit);
-    ctx.fillStyle = top;
-    ctx.fillRect(cx - 7 * unit, cy - 8 * unit, 14 * unit, 13 * unit);
-    if (highlight) {
-      ctx.strokeStyle = "rgba(255,244,176,0.7)";
-      ctx.lineWidth = Math.max(1, unit);
-      ctx.strokeRect(cx - 7 * unit, cy - 8 * unit, 14 * unit, 13 * unit);
-    }
-    const hx = cx;
-    const hy = cy - 12 * unit;
-    const hr = 6 * unit;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.arc(hx, hy, hr, 0, Math.PI * 2);
-    ctx.fill();
-    drawHair(ctx, hx, hy, hr, l.hair || "short", hair);
-    ctx.fillStyle = "#2a160c";
-    ctx.fillRect(hx - 2.4 * unit, hy - 1.2 * unit, 1.4 * unit, 1.4 * unit);
-    ctx.fillRect(hx + 1 * unit, hy - 1.2 * unit, 1.4 * unit, 1.4 * unit);
-  }
-
-  function actionVoice(action) {
-    switch (action) {
-      case "forage": return "gathering";
-      case "mill": return "crushing";
-      case "cook": return "baking";
-      case "roast": return "roasting";
-      case "chop": return "chopping";
-      case "paper": return "pulping";
-      case "mine": return "mining";
-      case "smelt": return "smelting";
-      case "forge": return "forging";
-      case "fight": return "fighting";
-      default: return action;
-    }
+    const out = art.drawWorld(ctx, canvas, {
+      map: state.map,
+      you: state.you,
+      players: state.players,
+      npcs: state.npcs,
+      nodes: state.nodes,
+      ground: state.ground,
+      prevPos: state.prevPos,
+      lastTickAt: state.lastTickAt,
+      tickMs: state.tickMs,
+      now: performance.now(),
+      camFocus: state.camFocus,
+      snap: state.camSnap,
+    });
+    state.cam = out.cam;
+    state.camFocus = out.focus;
+    if (out.focus) state.camSnap = false;
   }
 
   if (globalThis.HollowmereSprites && HollowmereSprites.load) HollowmereSprites.load();
