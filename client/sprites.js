@@ -52,10 +52,85 @@
   PACK.forEach((p) => { MANIFEST[p.key] = p.src; });
 
   const images = {};
+  const measured = {};
+
+  // Opaque bbox in source pixels. Seeded from the AD pack so the first
+  // paint (and node tests) plant plates before a canvas measure runs.
+  // load() overwrites these from the decoded bitmap when a document exists.
+  const BOUNDS = {
+    "terrain/grass": { x: 1, y: 11, w: 62, h: 42 },
+    "terrain/path": { x: 1, y: 11, w: 61, h: 41 },
+    "terrain/water": { x: 1, y: 11, w: 62, h: 42 },
+    "terrain/scar": { x: 1, y: 10, w: 62, h: 44 },
+    "terrain/wall": { x: 1, y: 6, w: 61, h: 52 },
+    "buildings/house": { x: 2, y: 18, w: 188, h: 154 },
+    "props/house": { x: 1, y: 9, w: 94, h: 77 },
+    "props/hearth": { x: 2, y: 1, w: 92, h: 93 },
+    "props/stile": { x: 1, y: 12, w: 93, h: 71 },
+    "props/millstone": { x: 1, y: 2, w: 93, h: 91 },
+    "props/oak_chest": { x: 1, y: 6, w: 94, h: 83 },
+    "props/kiln": { x: 1, y: 7, w: 94, h: 82 },
+    "props/anvil": { x: 1, y: 12, w: 93, h: 71 },
+    "props/pedlar_stall": { x: 7, y: 1, w: 80, h: 94 },
+    "props/tree": { x: 8, y: 1, w: 80, h: 94 },
+    "props/stump": { x: 1, y: 7, w: 94, h: 82 },
+    "gather/bramble": { x: 1, y: 11, w: 94, h: 74 },
+    "gather/hazel": { x: 1, y: 12, w: 94, h: 73 },
+    "gather/ore_copper": { x: 1, y: 9, w: 94, h: 78 },
+    "gather/ore_tin": { x: 3, y: 11, w: 92, h: 74 },
+    "hostiles/thornkin": { x: 1, y: 28, w: 42, h: 39 },
+    "hostiles/brambleback": { x: 1, y: 15, w: 62, h: 65 },
+    "npcs/marta": { x: 3, y: 1, w: 58, h: 93 },
+    "npcs/old_fen": { x: 1, y: 7, w: 62, h: 81 },
+    "npcs/pip": { x: 2, y: 1, w: 59, h: 94 },
+    "npcs/wend": { x: 1, y: 9, w: 62, h: 76 },
+    "paperdoll/skin_tan": { x: 24, y: 1, w: 80, h: 190 },
+    "paperdoll/skin_fair": { x: 24, y: 1, w: 80, h: 190 },
+    "paperdoll/skin_olive": { x: 24, y: 1, w: 80, h: 190 },
+    "paperdoll/skin_deep": { x: 24, y: 1, w: 80, h: 190 },
+    "paperdoll/body_mask": { x: 24, y: 1, w: 80, h: 190 },
+  };
+
+  function boundsOf(key, imgW, imgH) {
+    const b = measured[key] || BOUNDS[key];
+    if (b && b.w > 0 && b.h > 0) return b;
+    const w = imgW || 0, h = imgH || 0;
+    return { x: 0, y: 0, w: w, h: h };
+  }
+
+  function measureImage(img) {
+    if (typeof document === "undefined" || !img || !img.naturalWidth) return null;
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    g.drawImage(img, 0, 0);
+    let data;
+    try { data = g.getImageData(0, 0, c.width, c.height).data; }
+    catch { return null; }
+    let minx = c.width, miny = c.height, maxx = -1, maxy = -1;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        if (data[(y * c.width + x) * 4 + 3] > 16) {
+          if (x < minx) minx = x;
+          if (y < miny) miny = y;
+          if (x > maxx) maxx = x;
+          if (y > maxy) maxy = y;
+        }
+      }
+    }
+    if (maxx < 0) return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    return { x: minx, y: miny, w: maxx - minx + 1, h: maxy - miny + 1 };
+  }
 
   function loadOne(key, src, fallback) {
     const img = new Image();
-    img.onload = () => { images[key] = img; };
+    img.onload = () => {
+      images[key] = img;
+      const b = measureImage(img);
+      if (b) measured[key] = b;
+    };
     img.onerror = () => {
       if (fallback && fallback !== src) loadOne(key, fallback, null);
       else images[key] = null;
@@ -83,8 +158,53 @@
     return true;
   }
 
+  // Terrain cube: opaque top-left is the north-west of the top face.
+  // Scale that face to tileW and sit it on the logical diamond.
+  function destAtTopDiamond(left, north, tileW, imgW, imgH, bounds) {
+    const b = bounds && bounds.w ? bounds : { x: 0, y: 0, w: imgW, h: imgH };
+    const scale = tileW / Math.max(1, b.w);
+    return {
+      x: left - b.x * scale,
+      y: north - b.y * scale,
+      w: imgW * scale,
+      h: imgH * scale,
+    };
+  }
+
+  // ¾ prop plate: a 2:1 ground diamond of width = opaque width sits on
+  // the opaque bottom. Scale that diamond onto the tile diamond
+  // (left, north) · (tileW × tileH).
+  function destAtGroundDiamond(left, north, tileW, tileH, imgW, imgH, bounds) {
+    const b = bounds && bounds.w ? bounds : { x: 0, y: 0, w: imgW, h: imgH };
+    const scale = tileW / Math.max(1, b.w);
+    const srcDiamondNorth = (b.y + b.h) - b.w / 2;
+    return {
+      x: left - b.x * scale,
+      y: north - srcDiamondNorth * scale,
+      w: imgW * scale,
+      h: imgH * scale,
+    };
+  }
+
+  // Figure / paperdoll: opaque bottom-centre maps to the world foot.
+  function destAtFeet(feetX, feetY, destW, destH, imgW, imgH, bounds) {
+    const b = bounds && bounds.w ? bounds : { x: 0, y: 0, w: imgW || destW, h: imgH || destH };
+    const iw = imgW || destW, ih = imgH || destH;
+    const sx = destW / Math.max(1, iw);
+    const sy = destH / Math.max(1, ih);
+    return {
+      x: feetX - (b.x + b.w / 2) * sx,
+      y: feetY - (b.y + b.h) * sy,
+      w: destW,
+      h: destH,
+    };
+  }
+
   function blitFeet(ctx, key, feetX, feetY, w, h) {
-    return blit(ctx, key, feetX - w / 2, feetY - h, w, h);
+    const im = ready(key);
+    if (!im) return false;
+    const d = destAtFeet(feetX, feetY, w, h, im.naturalWidth, im.naturalHeight, boundsOf(key, im.naturalWidth, im.naturalHeight));
+    return blit(ctx, key, d.x, d.y, d.w, d.h);
   }
 
   const scratch = typeof document !== "undefined" ? document.createElement("canvas") : null;
@@ -92,8 +212,9 @@
   function blitTint(ctx, key, feetX, feetY, w, h, color) {
     const im = ready(key);
     if (!im || !scratch) return false;
-    scratch.width = Math.max(1, Math.ceil(w));
-    scratch.height = Math.max(1, Math.ceil(h));
+    const d = destAtFeet(feetX, feetY, w, h, im.naturalWidth, im.naturalHeight, boundsOf(key, im.naturalWidth, im.naturalHeight));
+    scratch.width = Math.max(1, Math.ceil(d.w));
+    scratch.height = Math.max(1, Math.ceil(d.h));
     const s = scratch.getContext("2d");
     s.clearRect(0, 0, scratch.width, scratch.height);
     s.drawImage(im, 0, 0, scratch.width, scratch.height);
@@ -102,7 +223,7 @@
       s.fillStyle = color;
       s.fillRect(0, 0, scratch.width, scratch.height);
     }
-    ctx.drawImage(scratch, feetX - w / 2, feetY - h);
+    ctx.drawImage(scratch, Math.round(d.x), Math.round(d.y));
     return true;
   }
 
@@ -167,8 +288,13 @@
   const api = {
     PACK,
     MANIFEST,
+    BOUNDS,
     load,
     ready,
+    boundsOf,
+    destAtTopDiamond,
+    destAtGroundDiamond,
+    destAtFeet,
     blit,
     blitFeet,
     blitTint,

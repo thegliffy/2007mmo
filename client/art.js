@@ -64,10 +64,16 @@
     // Flat diamond fill first so gaps never flash through.
     fillPoly(ctx, pts, fill, "rgba(20,12,6,0.28)", 0.8);
     if (im) {
-      // AD terrain is already a ¾ cube (diamond top + two sides).
-      // Blit at tile size — do not stretch a cube into a flat rhombus.
+      // AD terrain is a ¾ cube. Plant the cube's top face on this
+      // cell's diamond — do not stamp the padded 64×64 canvas at
+      // (left, north), which left the grass floating inside the tile.
+      const d = S.destAtTopDiamond(
+        pts[3].x, pts[0].y, I.TW,
+        im.naturalWidth, im.naturalHeight,
+        S.boundsOf(key, im.naturalWidth, im.naturalHeight)
+      );
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(im, pts[3].x, pts[0].y, I.TW, I.TW);
+      ctx.drawImage(im, Math.round(d.x), Math.round(d.y), Math.round(d.w), Math.round(d.h));
     }
     if (key === "terrain/water") {
       ctx.strokeStyle = "rgba(180,220,255," + (0.25 + 0.2 * (flicker || 0)) + ")";
@@ -82,6 +88,55 @@
       );
       ctx.stroke();
     }
+  }
+
+  // Plant a ¾ plate so its ground diamond matches the cell (or footprint).
+  function blitPlate(ctx, key, tx, ty, cam, fw, fh) {
+    const I = iso();
+    const S = spr();
+    const im = S && S.ready(key);
+    if (!im) return false;
+    const w = fw == null ? 1 : fw;
+    const h = fh == null ? 1 : fh;
+    const pts = I.footprintDiamond(tx, ty, w, h, cam);
+    const d = S.destAtGroundDiamond(
+      pts[3].x, pts[0].y, I.TW * w, I.TH * h,
+      im.naturalWidth, im.naturalHeight,
+      S.boundsOf(key, im.naturalWidth, im.naturalHeight)
+    );
+    return S.blit(ctx, key, d.x, d.y, d.w, d.h);
+  }
+
+  // Cottage 2×2 plate with the hearth cell punched out so the fire
+  // plate stays visible (and not painted onto the thatch).
+  function blitCottage(ctx, key, cam) {
+    const I = iso();
+    const S = spr();
+    const H = I.HOUSE;
+    const im = S && S.ready(key);
+    if (!im) return false;
+    const pts = I.footprintDiamond(H.x, H.y, H.w, H.h, cam);
+    const d = S.destAtGroundDiamond(
+      pts[3].x, pts[0].y, I.TW * H.w, I.TH * H.h,
+      im.naturalWidth, im.naturalHeight,
+      S.boundsOf(key, im.naturalWidth, im.naturalHeight)
+    );
+    const hole = I.diamond(H.idX, H.idY, cam);
+    const up = I.TH * 5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(d.x - 2, d.y - 2, d.w + 4, d.h + 4);
+    ctx.moveTo(hole[0].x, hole[0].y - up);
+    ctx.lineTo(hole[1].x, hole[1].y - up);
+    ctx.lineTo(hole[1].x, hole[1].y + 4);
+    ctx.lineTo(hole[2].x, hole[2].y + 4);
+    ctx.lineTo(hole[3].x, hole[3].y + 4);
+    ctx.lineTo(hole[3].x, hole[3].y - up);
+    ctx.closePath();
+    ctx.clip("evenodd");
+    const ok = S.blit(ctx, key, d.x, d.y, d.w, d.h);
+    ctx.restore();
+    return ok;
   }
 
   function raiseWall(ctx, tx, ty, cam) {
@@ -289,7 +344,7 @@
       case "anvil": return { w: 48, h: 40 };
       case "hearth": return { w: 52, h: 64 };
       case "stile": return { w: 72, h: 56 };
-      case "house": return { w: 140, h: 160 };
+      case "house": return { w: 192, h: 192 };
       case "pedlar_stall": return { w: 56, h: 64 };
       case "ore": return { w: 44, h: 36 };
       case "wall": return { w: 56, h: 40 };
@@ -322,7 +377,15 @@
       consider(n.x, n.y, kind, n);
     }
     consider(8, 8, "stile");
-    consider(4, 5, "house");
+    {
+      const H = I.HOUSE;
+      const spec = spriteBox("house");
+      const south = I.toScreen(H.x + H.w, H.y + H.h, cam);
+      if (sx >= south.x - spec.w / 2 && sx <= south.x + spec.w / 2 &&
+          sy >= south.y - spec.h && sy <= south.y + 6) {
+        hits.push({ x: H.idX, y: H.idY, depth: H.idX + H.idY, h: spec.h });
+      }
+    }
     consider(10, 5, "pedlar_stall");
     for (const f of figures || []) {
       const e = f.e || f;
@@ -394,7 +457,7 @@
 
     const sprites = [];
     sprites.push({ x: 8, y: 8, depth: 16, kind: "stile" });
-    sprites.push({ x: 4, y: 5, depth: 9, kind: "house" });
+    sprites.push({ x: I.HOUSE.x, y: I.HOUSE.y, depth: I.HOUSE.x + I.HOUSE.y + I.HOUSE.w + I.HOUSE.h - 2, kind: "house" });
     sprites.push({ x: 10, y: 5, depth: 15, kind: "pedlar_stall" });
 
     for (let y = 0; y < m.h; y++) {
@@ -434,38 +497,42 @@
         continue;
       }
       if (s.kind === "house") {
-        if (!(S && (S.blitFeet(ctx, "buildings/house", feet.x, feet.y, 192, 192) ||
-                    S.blitFeet(ctx, "props/house", feet.x, feet.y, 96, 96)))) {
+        const H = I.HOUSE;
+        // Punch the hearth cell out of the plate so fire-1 can draw
+        // into that diamond instead of sitting on the thatch.
+        if (!(blitCottage(ctx, "buildings/house", cam) ||
+              blitCottage(ctx, "props/house", cam))) {
+          const south = I.toScreen(H.x + H.w, H.y + H.h, cam);
           ctx.fillStyle = "#6b4423";
-          ctx.fillRect(feet.x - 40, feet.y - 70, 80, 54);
+          ctx.fillRect(south.x - 40, south.y - 70, 80, 54);
           ctx.fillStyle = "#8a5a28";
           ctx.beginPath();
-          ctx.moveTo(feet.x - 46, feet.y - 68);
-          ctx.lineTo(feet.x, feet.y - 98);
-          ctx.lineTo(feet.x + 46, feet.y - 68);
+          ctx.moveTo(south.x - 46, south.y - 68);
+          ctx.lineTo(south.x, south.y - 98);
+          ctx.lineTo(south.x + 46, south.y - 68);
           ctx.fill();
           ctx.fillStyle = "#2a160c";
-          ctx.fillRect(feet.x - 8, feet.y - 44, 14, 20);
+          ctx.fillRect(south.x - 8, south.y - 44, 14, 20);
         }
         continue;
       }
       if (s.kind === "stile") {
-        S && S.blitFeet(ctx, "props/stile", feet.x, feet.y + 6, 120, 100);
+        blitPlate(ctx, "props/stile", s.x, s.y, cam);
         continue;
       }
       if (s.kind === "pedlar_stall") {
-        S && S.blitFeet(ctx, "props/pedlar_stall", feet.x, feet.y, 96, 96);
+        blitPlate(ctx, "props/pedlar_stall", s.x, s.y, cam);
         continue;
       }
       if (s.kind === "tree") {
         if (s.ready === false) {
-          if (!(S && S.blitFeet(ctx, "props/stump", feet.x, feet.y, 72, 64))) {
+          if (!blitPlate(ctx, "props/stump", s.x, s.y, cam)) {
             ctx.fillStyle = "#6b3e1a";
             ctx.beginPath();
             ctx.ellipse(feet.x, feet.y - 4, 10, 5, 0, 0, Math.PI * 2);
             ctx.fill();
           }
-        } else if (!(S && S.blitFeet(ctx, "props/tree", feet.x, feet.y, 96, 96))) {
+        } else if (!blitPlate(ctx, "props/tree", s.x, s.y, cam)) {
           ctx.fillStyle = "#6b3e1a";
           ctx.fillRect(feet.x - 4, feet.y - 36, 8, 36);
           ctx.fillStyle = "#245218";
@@ -507,8 +574,9 @@
         const key = S && S.nodeKey(n);
         // Map glyph T already drew the ready tree or the stump.
         if (n.kind === "tree") continue;
-        const tall = n.kind === "kiln" || n.id === "fire-1";
-        const drew = key && S.blitFeet(ctx, key, feet.x, feet.y, 96, tall ? 96 : 96);
+        // fire-1 (hearth) draws into the cottage's punched SE cell —
+        // house blitCottage leaves that diamond open.
+        const drew = key && blitPlate(ctx, key, n.x, n.y, cam);
         if (!drew) {
           if (n.kind === "bush") {
             ctx.fillStyle = n.ready ? "#2f5a22" : "#3a4a30";

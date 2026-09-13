@@ -59,6 +59,16 @@ assert(spr.MANIFEST["npcs/marta"], "Marta is in the drop list");
 assert(spr.MANIFEST["paperdoll/skin_tan"], "paperdoll skin is in the drop list");
 assert(spr.MANIFEST["terrain/grass"], "grass is in the drop list");
 
+const grass = spr.BOUNDS["terrain/grass"];
+assert(grass && grass.w === 62 && grass.h === 42, "grass opaque seed matches the AD plate");
+const cube = spr.destAtTopDiamond(0, 0, 96, 64, 64, grass);
+assert(Math.abs((cube.x + grass.x * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest left");
+assert(Math.abs((cube.y + grass.y * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest north");
+
+const foot = spr.destAtFeet(100, 200, 64, 96, 64, 96, { x: 4, y: 8, w: 40, h: 80 });
+assert(Math.abs(foot.x - (100 - (4 + 20))) < 1e-9, "destAtFeet uses opaque mid-x");
+assert(Math.abs(foot.y - (200 - (8 + 80))) < 1e-9, "destAtFeet uses opaque bottom");
+
 if (failed) {
   console.error(failed + " failed");
   process.exit(1);
