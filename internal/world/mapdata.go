@@ -7,6 +7,14 @@ package world
 //	. grass  H house  * hearth  B bramble
 //	Z hazel  M millstone
 //
+// Everything a player cannot stand on blocks: walls, trees, water, and
+// the work nodes themselves. You reach a bramble or the hearth from an
+// adjacent tile, not by standing inside it.
+//
+// House tiles ('H') stay walkable on purpose: the hearth sits inside the
+// house, and blocking them would seal it off entirely. See
+// TestEveryNodeIsReachable.
+//
 // The northern 15 rows keep the Week 1 hamlet coordinates (hearth, mill,
 // bramble, hazel, stile spawn). Rows below open into a woods and clearing.
 var mapRows = []string{
@@ -59,21 +67,12 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 		block[y] = make([]bool, w)
 		for x, c := range row {
 			switch c {
-			case '#', 'T', '~':
+			case '#', 'T', '~', 'B', 'Z', 'M', '*':
 				block[y][x] = true
 			}
 		}
 	}
 	return w, h, tiles, block
-}
-
-func walkableGlyph(c byte) bool {
-	switch c {
-	case '#', 'T', '~':
-		return false
-	default:
-		return true
-	}
 }
 
 func seedNodes() []*Node {
@@ -129,8 +128,10 @@ func seedNodes() []*Node {
 
 func seedNPCs() []*NPC {
 	return []*NPC{
-		{ID: "npc-marta", Name: "Marta", X: 4, Y: 5, HomeX: 4, HomeY: 5, WanderEvery: 4, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
-		{ID: "npc-fen", Name: "Old Fen", X: 18, Y: 2, HomeX: 18, HomeY: 2, WanderEvery: 5, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		// Beside the hearth, not in it: (4,5) is the fire tile itself.
+		{ID: "npc-marta", Name: "Marta", X: 3, Y: 5, HomeX: 3, HomeY: 5, WanderEvery: 4, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		// Beside the brambles rather than inside one: (18,2) is a bush tile.
+		{ID: "npc-fen", Name: "Old Fen", X: 17, Y: 2, HomeX: 17, HomeY: 2, WanderEvery: 5, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
 		{ID: "npc-pip", Name: "Pip", X: 9, Y: 8, HomeX: 9, HomeY: 8, WanderEvery: 2, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
 		{
 			ID: "npc-thornkin-1", Name: "Thornkin", X: 10, Y: 22, HomeX: 10, HomeY: 22,
