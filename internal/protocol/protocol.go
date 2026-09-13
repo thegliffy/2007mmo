@@ -52,18 +52,32 @@ const (
 	ItemAxe   = "axe"
 	ItemFlint = "flint"
 	ItemSword = "sword"
+	ItemPick  = "pick"
+
+	// Metal. Copper and tin smelt together into a bronze bar; the bar
+	// forges into a knife. One beginner loop, not a skill tree.
+	ItemCopper = "copper"
+	ItemTin    = "tin"
+	ItemBar    = "bar"
+	ItemKnife  = "knife"
 
 	SkillForage  = "forage"
 	SkillCook    = "cook"
 	SkillMelee   = "melee"
 	SkillDefense = "defense"
 	SkillWood    = "wood"
+	SkillMine    = "mine"
+	SkillSmith   = "smith"
 
-	KindBush  = "bush"
-	KindHazel = "hazel"
-	KindMill  = "mill"
-	KindFire  = "fire"
-	KindTree  = "tree"
+	KindBush   = "bush"
+	KindHazel  = "hazel"
+	KindMill   = "mill"
+	KindFire   = "fire"
+	KindTree   = "tree"
+	KindCopper = "copper"
+	KindTin    = "tin"
+	KindKiln   = "kiln"
+	KindAnvil  = "anvil"
 
 	ActionForage = "forage"
 	ActionMill   = "mill"
@@ -71,6 +85,9 @@ const (
 	ActionRoast  = "roast"
 	ActionChop   = "chop"
 	ActionPaper  = "paper"
+	ActionMine   = "mine"
+	ActionSmelt  = "smelt"
+	ActionForge  = "forge"
 	ActionFight  = "fight"
 )
 
@@ -311,6 +328,8 @@ func SkillCatalog() map[string]SkillInfo {
 		SkillMelee:   {Name: "Melee", Order: 3},
 		SkillDefense: {Name: "Defense", Order: 4},
 		SkillWood:    {Name: "Woodcutting", Order: 5},
+		SkillMine:    {Name: "Mining", Order: 6},
+		SkillSmith:   {Name: "Smithing", Order: 7},
 	}
 }
 
@@ -328,6 +347,12 @@ func Catalog() map[string]ItemInfo {
 		ItemAxe:   {Name: "Woodsman's axe", Glyph: "Ax", Tool: true, Verb: "chop"},
 		ItemFlint: {Name: "Flint and steel", Glyph: "Fs", Tool: true, Verb: "light"},
 		ItemSword: {Name: "Briar sword", Glyph: "Sw", Tool: true, Attack: 4, Damage: 1},
+		ItemPick:  {Name: "Quarry pick", Glyph: "Pk", Tool: true, Verb: "mine"},
+
+		ItemCopper: {Name: "Copper ore", Glyph: "Cu"},
+		ItemTin:    {Name: "Tin ore", Glyph: "Sn"},
+		ItemBar:    {Name: "Bronze bar", Glyph: "Br"},
+		ItemKnife:  {Name: "Bronze knife", Glyph: "Kn", Tool: true, Attack: 2, Damage: 1},
 	}
 }
 

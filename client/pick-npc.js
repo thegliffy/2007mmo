@@ -1,7 +1,7 @@
 // Canvas click targeting for Hollowmere. Shared by the browser client
 // and scripts/pick-npc-test.js (node).
 //
-// On a 28×32 map a tile is small; hostiles also wander. Clicking the
+// On a 40×32 map a tile is small; hostiles also wander. Clicking the
 // beast's sprite often lands on a neighbor tile. Pick the nearest living
 // NPC within Chebyshev ≤ maxDist (default 1 = the 3×3 around the click).
 // Prefer hostiles when a villager and a beast are both in range.

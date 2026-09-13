@@ -1,11 +1,12 @@
 package world
 
-// Original-IP hamlet plus southern briar-woods. No third-party tilesets
-// or borrowed monster names.
+// Original-IP hamlet, southern briar-woods, and the eastern scars.
+// No third-party tilesets or borrowed monster names.
 //
 //	# wall   T tree   ~ water   P path
 //	. grass  H house  * hearth  B bramble
 //	Z hazel  M millstone
+//	C copper N tin    K kiln    A anvil
 //
 // Everything a player cannot stand on blocks: walls, trees, water, and
 // the work nodes themselves. You reach a bramble or the hearth from an
@@ -15,41 +16,43 @@ package world
 // house, and blocking them would seal it off entirely. See
 // TestEveryNodeIsReachable.
 //
-// The northern 15 rows keep the Week 1 hamlet coordinates (hearth, mill,
-// bramble, hazel, stile spawn). Rows below open into a woods and clearing.
+// Columns 0–26 keep every Week 1 / Week 2 coordinate (hearth, mill,
+// bramble, hazel, stile spawn, southern clearing). Column 27 was the
+// east wall; it is open now, and the map runs out to 40 so the scars
+// have room to be a place, not a strip.
 var mapRows = []string{
-	"############################",
-	"#TTT....PPPP....TTTTTTT...T#",
-	"#T......P..P......B.B.T..T.#",
-	"#.......P..P......B.B......#",
-	"#..HHH..PPPP...............#",
-	"#..H*H..P...M.........~~~..#",
-	"#..HHH..P.....~~~.....~~~..#",
-	"#.......P.....~~~..........#",
-	"#..TTT..PPPPPPPPP....TTT...#",
-	"#.......P............T.T...#",
-	"#.......P....~~~...........#",
-	"#TTT....P....~~~..TTT......#",
-	"#T.ZZ...P..........T.......#",
-	"#.......P..................#",
-	"#TTTT...P.........TTTTT....#",
-	"#.......P..................#",
-	"#.......PPPP...............#",
-	"#..TTT..P..P.....TTTT......#",
-	"#.......P..P.....T..T......#",
-	"#.......PPPP.......P.......#",
-	"#..TTT.............P...TTT.#",
-	"#..............PPPPP.......#",
-	"#..TTT.........P...P...TT..#",
-	"#..............P.~~~.P.....#",
-	"#..T...........P.~~~.P..T..#",
-	"#..............PPPPPPP.....#",
-	"#.....TTT......P.....P.TTT.#",
-	"#..............P...........#",
-	"#.....TTT......P.....P.TTT.#",
-	"#..............PPPPPPP.....#",
-	"#..T...........P.....P..T..#",
-	"############################",
+	"########################################",
+	"#TTT....PPPP....TTTTTTT...TTTTT.TTTTTTT#",
+	"#T......P..P......B.B.T..T..T.C..C.TTTT#",
+	"#.......P..P......B.B..............C..T#",
+	"#..HHH..PPPP...............PPPP.C......#",
+	"#..H*H..P...M.........~~~..P..P..C.C..T#",
+	"#..HHH..P.....~~~.....~~~..P.KP.......T#",
+	"#.......P.....~~~..........P..P.N.N....#",
+	"#..TTT..PPPPPPPPP....TTT...PPPPP....N.T#",
+	"#.......P............T.T.....A.P.N....T#",
+	"#.......P....~~~...............P...N..T#",
+	"#TTT....P....~~~..TTT......TT..PPP....T#",
+	"#T.ZZ...P..........T.......T.....P.C.TT#",
+	"#.......P....................N....P....#",
+	"#TTTT...P.........TTTTT....TTT...P.TTTT#",
+	"#.......P........................P.....#",
+	"#.......PPPP................TTT.PP.TT.T#",
+	"#..TTT..P..P.....TTTT.......T...P...C.T#",
+	"#.......P..P.....T..T.........C.P.N...T#",
+	"#.......PPPP.......P..............P...T#",
+	"#..TTT.............P...TTT.TTT..PPP.TTT#",
+	"#..............PPPPP.................P.#",
+	"#..TTT.........P...P...TT..TT.N...P.C.T#",
+	"#..............P.~~~.P.............P..T#",
+	"#..T...........P.~~~.P..T...T.C...P.N.T#",
+	"#..............PPPPPPP..........PPP....#",
+	"#.....TTT......P.....P.TTT.TTT..P...TTT#",
+	"#..............P.................P.C..T#",
+	"#.....TTT......P.....P.TTT.TT.N.P...N.T#",
+	"#..............PPPPPPP..........PPP....#",
+	"#..T...........P.....P..T..T.C......C.T#",
+	"########################################",
 }
 
 const tileSize = 32
@@ -66,8 +69,7 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 		tiles[y] = []byte(row)
 		block[y] = make([]bool, w)
 		for x, c := range row {
-			switch c {
-			case '#', 'T', '~', 'B', 'Z', 'M', '*':
+			if tileBlocks(byte(c)) {
 				block[y][x] = true
 			}
 		}
@@ -78,6 +80,7 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 func seedNodes() []*Node {
 	var out []*Node
 	bush, hazel, mill, tree := 0, 0, 0, 0
+	copper, tin, kiln, anvil := 0, 0, 0, 0
 	for y, row := range mapRows {
 		for x, c := range row {
 			switch c {
@@ -128,6 +131,46 @@ func seedNodes() []*Node {
 					Remaining: treeYield,
 					Max:       treeYield,
 				})
+			case 'C', 'N':
+				// Same rule as trees: a vein you can never stand beside
+				// is scenery, not a node.
+				if !hasWalkableNeighbour(x, y) {
+					continue
+				}
+				kind, prefix := KindCopper, "copper-"
+				n := &copper
+				if c == 'N' {
+					kind, prefix, n = KindTin, "tin-", &tin
+				}
+				*n++
+				out = append(out, &Node{
+					ID:        prefix + itoa(*n),
+					Kind:      kind,
+					X:         x,
+					Y:         y,
+					Remaining: oreYield,
+					Max:       oreYield,
+				})
+			case 'K':
+				kiln++
+				out = append(out, &Node{
+					ID:        "kiln-" + itoa(kiln),
+					Kind:      KindKiln,
+					X:         x,
+					Y:         y,
+					Remaining: 1,
+					Max:       1,
+				})
+			case 'A':
+				anvil++
+				out = append(out, &Node{
+					ID:        "anvil-" + itoa(anvil),
+					Kind:      KindAnvil,
+					X:         x,
+					Y:         y,
+					Remaining: 1,
+					Max:       1,
+				})
 			case '*':
 				out = append(out, &Node{
 					ID:        "fire-1",
@@ -155,12 +198,10 @@ func hasWalkableNeighbour(x, y int) bool {
 		if nx < 0 || nx >= len(row) {
 			continue
 		}
-		switch row[nx] {
-		case '#', 'T', '~', 'B', 'Z', 'M', '*':
-			// blocked
-		default:
-			return true
+		if tileBlocks(row[nx]) {
+			continue
 		}
+		return true
 	}
 	return false
 }
@@ -195,6 +236,16 @@ func seedNPCs() []*NPC {
 			CoinsMin: 12, CoinsMax: 25, LeatherOdds: 6,
 		},
 	}
+}
+
+// tileBlocks is everything a player cannot stand on. House tiles stay
+// walkable so the hearth is not sealed inside its own walls.
+func tileBlocks(c byte) bool {
+	switch c {
+	case '#', 'T', '~', 'B', 'Z', 'M', '*', 'C', 'N', 'K', 'A':
+		return true
+	}
+	return false
 }
 
 func itoa(n int) string {

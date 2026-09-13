@@ -424,6 +424,16 @@
           return;
         }
       }
+      if (info.verb === "mine") {
+        const vein = state.nodes.find((n) =>
+          (n.kind === "copper" || n.kind === "tin") && n.x === t.x && n.y === t.y);
+        if (vein) {
+          send({ t: "interact", id: vein.id });
+          state.heldTool = null;
+          renderInv();
+          return;
+        }
+      }
       // Clicked nothing the tool works on: put it away and carry on.
       state.heldTool = null;
       renderInv();
@@ -756,6 +766,13 @@
             ctx.fillStyle = "#b08968";
             ctx.fillRect(px, py, tw, th);
             break;
+          case "C":
+          case "N":
+          case "K":
+          case "A":
+            ctx.fillStyle = (x + y) % 2 ? "#6a5a3c" : "#5a4a30";
+            ctx.fillRect(px, py, tw, th);
+            break;
           case "B":
           case "Z":
           case "M":
@@ -821,6 +838,33 @@
           ctx.lineWidth = 1;
           ctx.stroke();
         }
+      } else if (n.kind === "copper" || n.kind === "tin") {
+        ctx.fillStyle = n.ready ? "#6a5340" : "#4a4035";
+        ctx.beginPath();
+        ctx.moveTo(px + tw * 0.18, py + th * 0.72);
+        ctx.lineTo(px + tw * 0.38, py + th * 0.28);
+        ctx.lineTo(px + tw * 0.68, py + th * 0.32);
+        ctx.lineTo(px + tw * 0.84, py + th * 0.7);
+        ctx.closePath();
+        ctx.fill();
+        if (n.ready) {
+          ctx.fillStyle = n.kind === "copper" ? "#c46a32" : "#c8c4b0";
+          ctx.fillRect(px + tw * 0.4, py + th * 0.48, 4, 4);
+          ctx.fillRect(px + tw * 0.55, py + th * 0.58, 3, 3);
+        }
+      } else if (n.kind === "kiln") {
+        ctx.fillStyle = "#4a3a30";
+        ctx.fillRect(px + tw * 0.18, py + th * 0.28, tw * 0.64, th * 0.58);
+        ctx.fillStyle = "#2a2018";
+        ctx.fillRect(px + tw * 0.32, py + th * 0.48, tw * 0.36, th * 0.28);
+        ctx.fillStyle = "rgba(255," + Math.floor(90 + 70 * flicker) + ",20,0.9)";
+        ctx.fillRect(px + tw * 0.38, py + th * 0.54, tw * 0.24, th * 0.16);
+      } else if (n.kind === "anvil") {
+        ctx.fillStyle = "#3a3a3a";
+        ctx.fillRect(px + tw * 0.22, py + th * 0.42, tw * 0.56, th * 0.18);
+        ctx.fillRect(px + tw * 0.4, py + th * 0.58, tw * 0.2, th * 0.2);
+        ctx.fillStyle = "#6a6a6a";
+        ctx.fillRect(px + tw * 0.18, py + th * 0.36, tw * 0.64, th * 0.1);
       } else if (n.kind === "fire") {
         ctx.fillStyle = "#5a3a18";
         ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);
@@ -939,6 +983,11 @@
       case "mill": return "crushing";
       case "cook": return "baking";
       case "roast": return "roasting";
+      case "chop": return "chopping";
+      case "paper": return "pulping";
+      case "mine": return "mining";
+      case "smelt": return "smelting";
+      case "forge": return "forging";
       case "fight": return "fighting";
       default: return action;
     }

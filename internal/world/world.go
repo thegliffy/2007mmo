@@ -14,11 +14,15 @@ import (
 )
 
 const (
-	KindBush  = protocol.KindBush
-	KindHazel = protocol.KindHazel
-	KindMill  = protocol.KindMill
-	KindFire  = protocol.KindFire
-	KindTree  = protocol.KindTree
+	KindBush   = protocol.KindBush
+	KindHazel  = protocol.KindHazel
+	KindMill   = protocol.KindMill
+	KindFire   = protocol.KindFire
+	KindTree   = protocol.KindTree
+	KindCopper = protocol.KindCopper
+	KindTin    = protocol.KindTin
+	KindKiln   = protocol.KindKiln
+	KindAnvil  = protocol.KindAnvil
 
 	forageTicks = 2
 	millTicks   = 2
@@ -26,14 +30,22 @@ const (
 	roastTicks  = 2
 	chopTicks   = 3
 	paperTicks  = 3
+	mineTicks   = 3
+	smeltTicks  = 3
+	forgeTicks  = 3
 	forageXP    = 12
 	millXP      = 10
 	cookXP      = 18
 	roastXP     = 14
 	chopXP      = 15
 	paperXP     = 20
+	mineXP      = 16
+	smeltXP     = 22
+	forgeXP     = 28
 	treeYield   = 3
 	treeCD      = 20
+	oreYield    = 3
+	oreCD       = 22
 	bushYield   = 3
 	bushCD      = 12
 	hazelYield  = 2
@@ -542,7 +554,7 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 		return
 	}
 	switch n.Kind {
-	case KindBush, KindHazel, KindTree:
+	case KindBush, KindHazel, KindTree, KindCopper, KindTin:
 		if n.Remaining <= 0 || n.Cooldown > 0 {
 			p.ActionNode = ""
 			return
@@ -555,6 +567,14 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			}
 			p.Action = protocol.ActionChop
 			p.ActionTicks = chopTicks
+		} else if n.Kind == KindCopper || n.Kind == KindTin {
+			if !hasTool(p.Inv, "mine") {
+				w.note(p.ID, "You would need a pick for that.")
+				p.ActionNode = ""
+				return
+			}
+			p.Action = protocol.ActionMine
+			p.ActionTicks = mineTicks
 		} else {
 			p.Action = protocol.ActionForage
 			p.ActionTicks = forageTicks
@@ -576,6 +596,34 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			return
 		}
 		w.note(p.ID, "The millstone waits for brambleberries, or a log to pulp.")
+		p.ActionNode = ""
+		return
+	case KindKiln:
+		// The kiln is already hot, like the hearth. Copper and tin
+		// together make a bronze bar — one beginner alloy, not a menu.
+		if countItem(p.Inv, protocol.ItemCopper) >= 1 && countItem(p.Inv, protocol.ItemTin) >= 1 {
+			p.Action = protocol.ActionSmelt
+			p.ActionTicks = smeltTicks
+			p.ActionItem = protocol.ItemBar
+			return
+		}
+		if countItem(p.Inv, protocol.ItemCopper) >= 1 {
+			w.note(p.ID, "The kiln wants tin as well. Copper alone will not run.")
+		} else if countItem(p.Inv, protocol.ItemTin) >= 1 {
+			w.note(p.ID, "The kiln wants copper as well. Tin alone will not run.")
+		} else {
+			w.note(p.ID, "The kiln is hot. Bring copper and tin together.")
+		}
+		p.ActionNode = ""
+		return
+	case KindAnvil:
+		if countItem(p.Inv, protocol.ItemBar) >= 1 {
+			p.Action = protocol.ActionForge
+			p.ActionTicks = forgeTicks
+			p.ActionItem = protocol.ItemBar
+			return
+		}
+		w.note(p.ID, "The anvil waits for a bronze bar.")
 		p.ActionNode = ""
 		return
 	case KindFire:
@@ -621,15 +669,23 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 	var leveled bool
 
 	switch action {
-	case protocol.ActionForage, protocol.ActionChop:
+	case protocol.ActionForage, protocol.ActionChop, protocol.ActionMine:
 		want := forageItem(n.Kind)
 		if want == "" || n.Remaining <= 0 {
 			return
 		}
+		before := countItem(next.Inv, want)
 		next.Inv = addItem(next.Inv, want, 1)
-		if want == protocol.ItemLog {
+		if countItem(next.Inv, want) == before {
+			w.note(p.ID, "Your pack is full.")
+			return
+		}
+		switch {
+		case want == protocol.ItemLog:
 			lv, leveled = addSkillXP(next.Skills, protocol.SkillWood, chopXP)
-		} else {
+		case want == protocol.ItemCopper || want == protocol.ItemTin:
+			lv, leveled = addSkillXP(next.Skills, protocol.SkillMine, mineXP)
+		default:
 			lv, leveled = addSkillXP(next.Skills, protocol.SkillForage, forageXP)
 		}
 		nr := *recFromNode(n)
@@ -644,6 +700,10 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			flavor = "A hazel nut comes free of its husk."
 		case protocol.ItemLog:
 			flavor = "The bough comes away. A good log."
+		case protocol.ItemCopper:
+			flavor = "The vein gives up a lump of copper, still cold."
+		case protocol.ItemTin:
+			flavor = "A pale chip of tin comes free of the rock."
 		default:
 			flavor = "You pick a brambleberry, still warm from the sun."
 		}
@@ -675,6 +735,33 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 		next.Inv = addItem(removeItem(next.Inv, protocol.ItemNut, 1), protocol.ItemRoast, 1)
 		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, roastXP)
 		flavor = "The hazel nut pops. A little smoke, a little sweetness."
+	case protocol.ActionSmelt:
+		if n.Kind != KindKiln || countItem(next.Inv, protocol.ItemCopper) < 1 || countItem(next.Inv, protocol.ItemTin) < 1 {
+			return
+		}
+		next.Inv = removeItem(next.Inv, protocol.ItemCopper, 1)
+		next.Inv = removeItem(next.Inv, protocol.ItemTin, 1)
+		before := countItem(next.Inv, protocol.ItemBar)
+		next.Inv = addItem(next.Inv, protocol.ItemBar, 1)
+		if countItem(next.Inv, protocol.ItemBar) == before {
+			w.note(p.ID, "Your pack is full.")
+			return
+		}
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillSmith, smeltXP)
+		flavor = "The kiln drinks both ores. A bronze bar, dull and heavy."
+	case protocol.ActionForge:
+		if n.Kind != KindAnvil || item != protocol.ItemBar || countItem(next.Inv, protocol.ItemBar) < 1 {
+			return
+		}
+		next.Inv = removeItem(next.Inv, protocol.ItemBar, 1)
+		before := countItem(next.Inv, protocol.ItemKnife)
+		next.Inv = addItem(next.Inv, protocol.ItemKnife, 1)
+		if countItem(next.Inv, protocol.ItemKnife) == before {
+			w.note(p.ID, "Your pack is full.")
+			return
+		}
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillSmith, forgeXP)
+		flavor = "The hammer rings. A bronze knife, rough but keen."
 	default:
 		return
 	}
@@ -708,6 +795,10 @@ func levelUpLine(action string, lv int) string {
 		name = "Foraging"
 	case protocol.ActionChop, protocol.ActionPaper:
 		name = "Woodcutting"
+	case protocol.ActionMine:
+		name = "Mining"
+	case protocol.ActionSmelt, protocol.ActionForge:
+		name = "Smithing"
 	}
 	return fmt.Sprintf("(%s is now level %d.)", name, lv)
 }
@@ -734,6 +825,10 @@ func (w *World) UseItem(ctx context.Context, id, itemID string) (string, bool) {
 		return "The pulp wants a hearth, not a mouthful.", false
 	case protocol.ItemNut:
 		return "Too hard to chew raw. The hearth would be kinder.", false
+	case protocol.ItemCopper, protocol.ItemTin:
+		return "Ore wants the kiln, not a pocket to rattle in.", false
+	case protocol.ItemBar:
+		return "A bar is for the anvil.", false
 	default:
 		return "That stays in the pack.", false
 	}
@@ -912,20 +1007,22 @@ func nodeReady(n *Node) bool {
 	if n == nil {
 		return false
 	}
-	if n.Kind == KindFire || n.Kind == KindMill {
+	if n.Kind == KindFire || n.Kind == KindMill || n.Kind == KindKiln || n.Kind == KindAnvil {
 		return true
 	}
 	return n.Remaining > 0 && n.Cooldown == 0
 }
 
 func gathers(kind string) bool {
-	return kind == KindBush || kind == KindHazel || kind == KindTree
+	return kind == KindBush || kind == KindHazel || kind == KindTree ||
+		kind == KindCopper || kind == KindTin
 }
 
 func channeling(action string) bool {
 	switch action {
 	case protocol.ActionForage, protocol.ActionMill, protocol.ActionCook, protocol.ActionRoast,
-		protocol.ActionChop, protocol.ActionPaper:
+		protocol.ActionChop, protocol.ActionPaper, protocol.ActionMine, protocol.ActionSmelt,
+		protocol.ActionForge:
 		return true
 	default:
 		return false
@@ -940,6 +1037,10 @@ func forageItem(kind string) string {
 		return protocol.ItemNut
 	case KindTree:
 		return protocol.ItemLog
+	case KindCopper:
+		return protocol.ItemCopper
+	case KindTin:
+		return protocol.ItemTin
 	default:
 		return ""
 	}
@@ -951,6 +1052,8 @@ func gatherCD(kind string) int {
 		return hazelCD
 	case KindTree:
 		return treeCD
+	case KindCopper, KindTin:
+		return oreCD
 	}
 	return bushCD
 }
