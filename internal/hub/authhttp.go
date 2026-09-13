@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -211,7 +212,7 @@ func (h *Hub) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	if !h.authThrottle(w, r, req.Username) {
 		return
 	}
-	_, _, username, token, err := h.Auth.Login(r.Context(), req.Username, req.Password)
+	accountID, _, username, token, err := h.Auth.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if isCredentialFailure(err) {
 			h.metrics.AddLoginFail()
@@ -219,6 +220,9 @@ func (h *Hub) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		clientAuthError(w, err)
 		return
 	}
+	// Login already revoked the other Redis tokens. Close any socket
+	// still holding one so the old tab does not sit reconnecting.
+	h.takeSoleSession(r.Context(), accountID, token)
 	h.setSessionCookie(w, r, token)
 	writeAuthJSON(w, http.StatusOK, protocol.AuthResponse{Username: username, World: protocol.WorldName})
 }
@@ -323,7 +327,43 @@ func (h *Hub) dropSocketsForAccountExcept(accountID, keep string) {
 	}
 	h.mu.Unlock()
 	for _, cl := range doomed {
-		h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your password changed. Log in again."})
+		h.sendJSON(cl, protocol.Err{
+			T:    protocol.MsgErr,
+			Msg:  "Your password changed. Log in again.",
+			Code: protocol.ErrSession,
+		})
+		cl.stop()
+	}
+}
+
+func replacedErr() protocol.Err {
+	return protocol.Err{T: protocol.MsgErr, Msg: "Signed in somewhere else.", Code: protocol.ErrReplaced}
+}
+
+func sessionErr() protocol.Err {
+	return protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again.", Code: protocol.ErrSession}
+}
+
+// takeSoleSession makes keep the only live session for an account:
+// other Redis tokens die, and any other socket for that account is
+// told it was replaced so the client stops retrying.
+func (h *Hub) takeSoleSession(ctx context.Context, accountID, keep string) {
+	if accountID == "" || keep == "" || h.Auth == nil {
+		return
+	}
+	if err := h.Auth.RevokeOtherSessions(ctx, accountID, keep); err != nil {
+		log.Printf("auth: revoke other sessions: %v", err)
+	}
+	h.mu.Lock()
+	var doomed []*Client
+	for _, cl := range h.clients {
+		if cl.accountID == accountID && cl.session != keep {
+			doomed = append(doomed, cl)
+		}
+	}
+	h.mu.Unlock()
+	for _, cl := range doomed {
+		h.sendJSON(cl, replacedErr())
 		cl.stop()
 	}
 }

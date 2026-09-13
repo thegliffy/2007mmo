@@ -192,6 +192,11 @@ func (s *Service) Login(ctx context.Context, rawName, password string) (accountI
 	if err != nil {
 		return "", "", "", "", err
 	}
+	// One live session per account. A login from another device must
+	// kill the cookie already sitting in the first browser, or "signed
+	// in elsewhere" is only a socket kick the old tab can walk back in
+	// from.
+	_ = s.sessions.DeleteAccountSessions(ctx, acct.ID, token)
 	_ = s.accounts.TouchLogin(ctx, acct.ID)
 	return acct.ID, pid, acct.Username, token, nil
 }
@@ -333,6 +338,15 @@ func (s *Service) ResetPassword(ctx context.Context, accountID, next string) err
 // password, for when a cookie leaks but the password is still good.
 func (s *Service) RevokeSessions(ctx context.Context, accountID string) error {
 	return s.sessions.DeleteAccountSessions(ctx, accountID, "")
+}
+
+// RevokeOtherSessions drops every session for an account except keep.
+// Used when a new login or an authenticated join becomes the sole owner.
+func (s *Service) RevokeOtherSessions(ctx context.Context, accountID, keep string) error {
+	if accountID == "" {
+		return nil
+	}
+	return s.sessions.DeleteAccountSessions(ctx, accountID, keep)
 }
 
 // GeneratePassword returns a strong temporary password from an alphabet

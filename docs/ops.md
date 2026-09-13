@@ -2,73 +2,132 @@
 
 How Kyle runs the live Compose stack at **2007.gliffy.tv** without pretending we have Kubernetes.
 
-The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (accounts, packs, node remaining). Redis holds **login sessions** and presence — you do not need a Redis dump to keep tarts, but flushing Redis **logs everybody out**.
+The hamlet is **one world process + Postgres + Redis**. Postgres is canonical (accounts, packs, coins, node remaining). Redis holds **login sessions** and presence — you do not need a Redis dump to keep tarts or bronze, but flushing Redis **logs everybody out**.
 
-All commands below assume you are in the git checkout that `docker compose` uses on that host (the same tree you would `git pull` into).
+All commands below assume you are in the git checkout that `docker compose` uses on that host (the same tree you would `git pull` into). On the live box the world is published at **127.0.0.1:28080** and Caddy terminates TLS in front of it. The snippet the host should be running is [`deploy/caddy/Caddyfile.snippet`](../deploy/caddy/Caddyfile.snippet).
+
+## P0 checklist
+
+Do these from the live checkout after every merge to `main`, and whenever you want proof the hamlet can be rewound.
+
+| # | What | Exact command |
+|---|------|----------------|
+| 1 | Record the SHA you are about to leave | `git rev-parse --short HEAD \| tee /tmp/hollowmere-prev-sha` |
+| 2 | Dump Postgres | `./scripts/pg-backup.sh` then copy `backups/hollowmere-latest.sql.gz` off the box |
+| 3 | Prove the dump loads | `./scripts/pg-backup-restore-drill.sh` — must print `DRILL PASS` |
+| 4 | Pull and rebuild | see **A1** |
+| 5 | Health (public) | `curl -sf https://2007.gliffy.tv/health` |
+| 6 | Stats (on the box only) | `curl -s http://127.0.0.1:28080/stats` — watch `lagP99Ms`, `online`, `ws`, `reconnects` |
+| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=…` |
+| 8 | Rollback if the world is wrong | **A2** |
+
+`/stats` and `/metrics` are **404 at the edge on purpose**. Do not curl them via `https://2007.gliffy.tv`.
+
+Out of scope for this P0 cut: character creator, bank, new skills or regions, art.
 
 ## A1 — Deploy
 
-1. On the live host, in the Compose project directory:
-   ```bash
-   git fetch origin
-   git checkout main
-   git pull origin main
-   docker compose up --build -d
-   ```
-2. Confirm the world is honest:
-   ```bash
-   curl -sf https://2007.gliffy.tv/health
-   curl -sf https://2007.gliffy.tv/stats
-   curl -sf https://2007.gliffy.tv/metrics | head
-   ```
-   Locally the same paths are `http://127.0.0.1:8080/...`.
-3. Open the site, **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser does not keep a cached `app.js` from the last map ship, enter a name you already used, and check the pack is still there. `index.html` pins `app.js?v=click-near-2` — bump that query if static hosting still serves an old script.
-
-Compose rebuilds the `world` image from `Dockerfile`. Postgres data stays on the `pgdata` volume. A deploy does **not** wipe packs.
-
-If you tag releases yourself:
+On the live host, in the Compose project directory:
 
 ```bash
-git rev-parse --short HEAD > /tmp/hollowmere-prev-sha
+# 1. Remember where you were (rollback target).
+git rev-parse --short HEAD | tee /tmp/hollowmere-prev-sha
+
+# 2. Dump first. A rebuild does not wipe pgdata, but a bad migration
+#    is cheaper to undo from a file than from memory.
+./scripts/pg-backup.sh
+# copy backups/hollowmere-latest.sql.gz off the box
+
+# 3. Pull the tree compose builds from.
+git fetch origin
+git checkout main
+git pull origin main
+
+# 4. Rebuild the world image and recreate the world container.
+#    Postgres and Redis stay up; the pgdata volume is untouched.
+docker compose up --build -d
 ```
 
-Keep that SHA so rollback has a target.
+Confirm the world is honest. **Health is public. Stats are not.**
+
+```bash
+curl -sf https://2007.gliffy.tv/health
+# on the box, past Caddy (this is the live scrape):
+curl -s http://127.0.0.1:28080/health
+curl -s http://127.0.0.1:28080/stats
+curl -s http://127.0.0.1:28080/metrics | head
+```
+
+Locally the same paths are `http://127.0.0.1:8080/...`.
+
+Open the site and **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser does not keep a cached `app.js` from the last map ship. Log in with a name you already used and check the pack is still there.
+
+`client/index.html` pins the scripts:
+
+```
+script src="app.js?v=p0-2"
+script src="pick-npc.js?v=p0-2"
+```
+
+Bump that `?v=` whenever a client fix must land through a cache. The world also sends `Cache-Control: no-cache` on HTML/JS/CSS; the query string is the belt as well as the braces.
+
+Compose rebuilds the `world` image from `Dockerfile`. There is no separate image registry — rollback is a git checkout of the previous SHA, then the same `docker compose up --build -d`.
 
 ## A2 — Rollback
 
-Preferred: check out the last known-good commit and rebuild. The volume is unchanged.
+Preferred: check out the SHA you wrote down in A1 and rebuild. The volume is unchanged.
 
 ```bash
-git checkout <previous-sha>
+PREV=$(cat /tmp/hollowmere-prev-sha)   # or any known-good short SHA
+git fetch origin
+git checkout "$PREV"
 docker compose up --build -d
 curl -sf https://2007.gliffy.tv/health
+curl -s http://127.0.0.1:28080/stats
 ```
 
-Then `git checkout main` when you are ready to try the newer tree again.
+Hard-refresh the site again (the `?v=` on `app.js` changes with the tree). Then `git checkout main` when you are ready to try the newer tree.
 
-If the bad deploy already wrote bad rows (rare; Week 1 has no migrations that rewrite packs), restore the last good dump with A3 instead of only rolling the binary.
+If the bad deploy already wrote bad rows (a migration that rewrote packs, a botched admin delete), restore the last good dump with A3 instead of only rolling the binary.
 
 Do **not** `docker compose down -v` on the live host. That deletes `pgdata`.
+
+Do **not** `docker compose down` without `-v` either unless you mean a full stop; `compose up --build -d` after `git checkout` is enough.
 
 ## A3 — Backup and restore (live Compose)
 
 Scripts live in `scripts/` and talk to the Compose service named `postgres`.
 
+The dump is the whole `hollowmere` database, which today is:
+
+| Table | What you get back |
+|-------|-------------------|
+| `accounts` | names, scrypt hashes, roles, bans |
+| `players` | pack JSON, skills (including Mining / Smithing), hp, coins, `account_id` |
+| `nodes` | bramble, hazel, trees, copper, tin, kiln, anvil remaining / cooldown |
+| `admin_actions` | host-tool audit log |
+| `schema_migrations` | which steps have run |
+
+Loot piles and in-flight mill / kiln / anvil channels are **memory-only**. A restore (or a crash) drops them. That is the safe direction: committed packs win, nothing is duplicated.
+
 ### Nightly / before-deploy dump
 
 ```bash
+cd /path/to/the/2007mmo/checkout    # the tree docker compose uses
 ./scripts/pg-backup.sh
 ```
 
-Writes `backups/hollowmere-<UTC>.sql.gz` and points `backups/hollowmere-latest.sql.gz` at it. Copy that file off the box (rsync, S3, whatever you already trust). The dump is the whole `hollowmere` database: `players` (pack + woodland XP) and `nodes` (bramble / hazel remaining).
+Writes `backups/hollowmere-<UTC>.sql.gz` and points `backups/hollowmere-latest.sql.gz` at it. Copy that file off the box (rsync, S3, whatever you already trust).
 
 ### Safe drill (does not touch live data)
 
 ```bash
 ./scripts/pg-backup-restore-drill.sh
+# or a specific dump:
+./scripts/pg-backup-restore-drill.sh backups/hollowmere-latest.sql.gz
 ```
 
-This dumps the running volume (or you pass an existing `.sql.gz`), restores it into a throwaway `postgres:16-alpine` container, and checks that player/node counts match live. Use this after every deploy and whenever you want proof the latest dump is loadable.
+Dumps the running volume (unless you pass a file), restores it into a throwaway `postgres:16-alpine` container, and checks that **accounts, players, nodes, coin totals, schema version, and node-kind counts** match live. Use this after every deploy and whenever you want proof the latest dump is loadable. A pass prints `DRILL PASS`.
 
 ### Actual live restore (downtime)
 
@@ -82,10 +141,14 @@ Only when you intend to rewind the hamlet:
 Or non-interactive:
 
 ```bash
+# live host publishes the world on :28080; the script tries 8080 then 28080.
 ./scripts/pg-restore.sh backups/hollowmere-YYYYMMDDThhmmssZ.sql.gz --yes
+# if you want to be explicit:
+HEALTH_URL=http://127.0.0.1:28080/health \
+  ./scripts/pg-restore.sh backups/hollowmere-YYYYMMDDThhmmssZ.sql.gz --yes
 ```
 
-The script stops `world`, drops and recreates `hollowmere`, loads the dump, starts `world`, and waits for `/health`. After restore, villagers see the packs from dump time. In-flight mill/hearth channels are lost (same T3 rule as a crash: committed rows win; nothing is duplicated).
+The script stops `world`, drops and recreates `hollowmere`, loads the dump, starts `world`, and waits for `/health`. After restore, villagers see the packs and purses from dump time.
 
 ## A4 — Accounts and sessions
 
@@ -103,6 +166,7 @@ Facts worth knowing before an incident:
 
 - **Passwords** are stored only as scrypt hashes (`scrypt$N$r$p$salt$key`, N=16384, ~16 MiB per hash). The format carries its own parameters, so raising the cost later re-hashes each password on the owner's next login. There is no recovery path — no email on file means **a forgotten password cannot be reset**, only the row deleted.
 - **Sessions live in Redis** (`session:<token>`, plus `acct-sessions:<accountID>` for revocation), 7 days sliding. `redis-cli FLUSHALL` signs out the whole hamlet; it loses no packs.
+- **One live session per account.** A successful login (or an authenticated `/ws` join) revokes every other Redis token for that account and closes any other open socket with `code=replaced` / “Signed in somewhere else.” The old tab stops retrying; its cookie is already dead. The pack is whatever Postgres last agreed to — the kick does not mint items.
 - **Concurrent hashing is capped** at 4, so a login flood costs ~64 MiB rather than one 16 MiB allocation per request.
 - **One account owns exactly one player row**, enforced by a unique index on `players.account_id`.
 - Player rows created before accounts existed keep `account_id IS NULL` and are simply unreachable. To see them: `SELECT id, name FROM players WHERE account_id IS NULL;`
@@ -185,28 +249,44 @@ docker compose exec postgres psql -U hollowmere -d hollowmere \
 
 ## A5 — Metrics and rate limits
 
-| URL | What |
-|-----|------|
-| `/health` | world + postgres + redis ping — the only one served publicly |
-| `/stats` | JSON: tick/loop/lag p50/p99, online, WS, joins, chats, actions, dropped frames, rate-limit counters, auth counters |
-| `/metrics` | Prometheus text of the same numbers |
+| URL | What | Public? |
+|-----|------|---------|
+| `/health` | world + postgres + redis ping | yes |
+| `/stats` | JSON: tick/loop/lag p50/p99/max, online, WS, joins, reconnects, chats, actions, dropped frames, rate-limit + auth counters | **no** — Caddy 404 |
+| `/metrics` | Prometheus text of the same numbers | **no** — Caddy 404 |
+
+### How to scrape on the live Caddy setup
+
+Caddy on 2007.gliffy.tv proxies to `127.0.0.1:28080` and **refuses** `/stats` and `/metrics` at the edge (`deploy/caddy/Caddyfile.snippet`). Prometheus, a watch script, or a human with a shell must hit the world process on the loopback, never the public hostname:
 
 ```bash
-npm run stats
-curl -s http://127.0.0.1:8080/metrics
-```
-
-On the live host `/stats` and `/metrics` are **404 at the edge** — Caddy refuses
-them so the `loginFails` and `limitedLogin` counters cannot tell someone
-guessing passwords whether the throttle is biting. Read them on the box,
-straight past Caddy:
-
-```bash
+# on the 2007.gliffy.tv box
 curl -s http://127.0.0.1:28080/stats
+curl -s http://127.0.0.1:28080/metrics
+
+# local compose
+curl -s http://127.0.0.1:8080/stats
+npm run stats
+npm run metrics
 ```
 
-The matcher lives in `deploy/caddy/Caddyfile.snippet`; `/health` stays public
-because it is only a boolean.
+A public scrape that works is a bug. `curl -sf https://2007.gliffy.tv/metrics` must 404.
+
+Numbers ops actually needs:
+
+| `/stats` | `/metrics` | Meaning |
+|----------|------------|---------|
+| `tickP50Ms` / `tickP99Ms` | `hollowmere_tick_p50_ms` / `_p99_ms` | simulation step alone |
+| `loopP50Ms` / `loopP99Ms` | `hollowmere_loop_p50_ms` / `_p99_ms` | tick plus state fan-out |
+| `lagP50Ms` / `lagP99Ms` | `hollowmere_tick_lag_p50_ms` / `_p99_ms` | how late the tick fired — **gate on this** |
+| `online` / `ws` | `hollowmere_online` / `hollowmere_ws` | CCU vs open sockets |
+| `joins` / `reconnects` | `hollowmere_joins_total` / `hollowmere_reconnects_total` | first hellos vs same-process returns |
+| `actions` | `hollowmere_actions_total` | interact / use / trade / drop |
+| `limitedHello` etc. | `hollowmere_rate_limited_total{kind=...}` | hello, ws, chat, conn, login, auth |
+| `unauthWS` | `hollowmere_unauthenticated_ws_total` | upgrades refused (dead cookie) |
+| `loginFails` | `hollowmere_login_failures_total` | bad password / register |
+
+`samples` / `hollowmere_tick_samples` is how many ticks the percentiles cover. At 0 they are meaningless (just booted).
 
 Rate limits (defaults are generous enough for local bots; tighten on the live host):
 
@@ -242,10 +322,34 @@ discarded because a client was not draining its socket. A slow client losing a
 frame is survivable — the next one is a full snapshot — but a climbing counter
 means clients are not keeping up, which no other metric shows.
 
-Two auth counters are worth an alert:
+Auth and reconnect counters worth an alert:
 
 | Counter | Means |
 |---------|-------|
 | `loginFails` / `hollowmere_login_failures_total` | Rejected credentials. Climbing on its own usually means people forgot passwords. |
 | `limitedLogin` / `hollowmere_rate_limited_total{kind="login"}` | Guesses refused by the throttle. Climbing means someone is working through a list. |
 | `unauthWS` / `hollowmere_unauthenticated_ws_total` | WebSocket upgrades refused for a missing or dead session. A steady trickle is normal (expired cookies); a spike is someone poking `/ws` directly. |
+| `reconnects` / `hollowmere_reconnects_total` | Hellos that found the player already in this process. A climb without a deploy usually means tabs flapping or a proxy dropping idle sockets. |
+
+## Known issue — WS reconnect flaps (P1)
+
+Live tabs have been seen to drop and come back on their own. This P0 cut takes the cheap server-side bites:
+
+- A second window no longer fights the first: the old socket is told `code=replaced` and the client stops retrying.
+- The 10s heartbeat no longer evicts everyone because Redis was slow. Only a missing or banned session closes the socket.
+- A failed `/auth/me` probe (world restarting) no longer dumps the player at the stile.
+- Caddy's snippet now flushes WebSocket frames immediately (`flush_interval -1`).
+
+What is still open, and belongs with P1 feel work rather than this gate:
+
+- No 30-minute soak is CI-gated. A proxy idle timeout or a NAT in front of Caddy can still drop a quiet tab; the client will reconnect if the cookie is good.
+- `reconnects` climbing while `online` is flat is the signal that the remaining flap is still happening. Capture `curl -s http://127.0.0.1:28080/stats` when it does.
+
+## No-dupe chaos (local)
+
+Against a local stack, not the live host:
+
+```bash
+python3 scripts/nodupe-chaos.py          # double-click, drop mid-channel, pedlar, pile
+go test ./internal/world/ -count=1 -run 'Dupe|Crash|Double|Disconnect|StoreFails|Aborted'
+```

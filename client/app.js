@@ -88,7 +88,13 @@
       if (state.stopped) return;
       // A refused upgrade looks exactly like a dropped socket from here,
       // so ask the server which it was before retrying forever.
-      if (!(await checkSession())) {
+      let stillIn;
+      try {
+        stillIn = await checkSession();
+      } catch {
+        stillIn = true; // probe failed; keep the cookie and try the socket
+      }
+      if (!stillIn) {
         showGate("Your session ended. Log in again.");
         return;
       }
@@ -179,6 +185,14 @@
         break;
       case "err":
         log("sys", esc(msg.msg));
+        // Server-told ends: do not reconnect. A later login (other tab
+        // or other device) sends replaced; a dead cookie sends session.
+        if (msg.code === "replaced" || msg.code === "session") {
+          state.stopped = true;
+          showGate(msg.msg || (msg.code === "replaced"
+            ? "Signed in somewhere else."
+            : "Your session ended. Log in again."));
+        }
         break;
       case "trade":
         state.shop = msg;
@@ -554,6 +568,8 @@
   }
 
   // checkSession reports whether the cookie is still good.
+  // A failed probe (world restarting, brief blip) must not look like a
+  // logout — that is how a live tab used to dump people at the stile.
   async function checkSession() {
     const r = await authFetch("/auth/me");
     if (r.ok) {
@@ -561,6 +577,7 @@
       $("acct-name").textContent = state.username || "";
       return true;
     }
+    if (r.status === 0) return true;
     return false;
   }
 

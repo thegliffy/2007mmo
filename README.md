@@ -8,6 +8,8 @@ Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” 
 
 by **thegliffy**
 
+**Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). Character creator and bank are not in this cut.
+
 ## Accounts and login
 
 Hollowmere now has a **real front door**. There is no anonymous entry.
@@ -16,7 +18,7 @@ Hollowmere now has a **real front door**. There is no anonymous entry.
 2. **The session is an HttpOnly cookie.** No script on the page can read it, so an XSS or a hostile link cannot carry your login away. Nothing identity-shaped lives in `localStorage` any more.
 3. **The WebSocket is authenticated before it opens.** `/ws` refuses to upgrade without a valid session, and the join frame carries **no** identity — so a client can no longer name a player id and be believed.
 4. **Peers see an opaque handle**, not your player id. The handle is fresh every time you walk in, so nobody can follow you across sessions by remembering it.
-5. **Change your password** from the Account panel. Doing so signs out every other session and closes its socket.
+5. **One live session.** Logging in (or joining with a valid cookie) signs that account out everywhere else — other tabs, other devices, leftover Redis tokens. The old socket is told `Signed in somewhere else` and does not retry. Changing your password from the Account panel does the same.
 6. **Cross-site requests are refused**: the WebSocket checks `Origin`, and the auth endpoints require a same-origin JSON post.
 
 One account owns one character. There is no *self-service* password reset — no email is collected — so recovery is an operator running `admin reset <name>` on the host, which issues a fresh random password and signs the account out everywhere. See **[docs/ops.md](docs/ops.md)** A6.
@@ -311,12 +313,12 @@ Villagers carry nothing.
 From the checkout that serves **2007.gliffy.tv** (or any `docker compose up` stack):
 
 ```bash
-./scripts/pg-backup.sh                      # dump pgdata → backups/
-./scripts/pg-backup-restore-drill.sh        # restore that dump into a throwaway Postgres; compare counts
+./scripts/pg-backup.sh                      # dump accounts + packs + coins + nodes → backups/
+./scripts/pg-backup-restore-drill.sh        # throwaway Postgres; compare accounts/players/nodes/coins/kinds
 ./scripts/pg-restore.sh backups/hollowmere-YYYYMMDDThhmmssZ.sql.gz   # real rewind; stops world
 ```
 
-Details, deploy, rollback, and live rate-limit knobs: **[docs/ops.md](docs/ops.md)**.
+The dump is accounts, packs (including metal), coins, and node remaining. Loot piles are memory-only and do not survive a restore. Details, deploy, rollback, live scrape: **[docs/ops.md](docs/ops.md)**.
 
 ## What this PoC proves
 
@@ -337,7 +339,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=metal-2` and `pick-npc.js?v=metal-1` so a stale `app.js` does not keep the old map.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p0-2` and `pick-npc.js?v=p0-2` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -359,7 +361,7 @@ Each script registers its own throwaway account on first run (`scripts/hollow_au
 | `5432` | Postgres |
 | `6379` | Redis |
 
-Useful URLs: `/health`, `/stats`, `/metrics`.
+Useful URLs: `/health` (public), `/stats` and `/metrics` (loopback only on the live host — Caddy 404s them at the edge; scrape `http://127.0.0.1:28080/stats`).
 
 ```bash
 npm start          # same as docker compose up --build
@@ -368,6 +370,7 @@ npm run metrics
 npm test           # Go unit tests (tick, gather, mill, roast, mine, smelt, forge, combat, no-dupe recovery, auth)
 npm run backup     # dump Compose Postgres
 npm run drill      # safe restore drill (throwaway container)
+npm run chaos      # local no-dupe chaos (double-click, drop mid-channel, pedlar, pile)
 ```
 
 ### WSS note
@@ -425,10 +428,10 @@ Measured on the PoC box (Go world + Compose Postgres/Redis). Re-run after `docke
 | Gate | Target | How to check | Status |
 |------|--------|----------------|--------|
 | **B1** | Cold load to in-world ≲ 10s on a mid laptop | Hard-refresh `/`, enter a name | **PASS** — static `index.html` + `styles.css` + `app.js`, no engine download |
-| **B2** | Stable WS ~30 min + reconnect | Leave a tab open; drop the socket | **PASS (reconnect)** — the client retries and the session cookie re-authenticates the upgrade; a dead session shows the portal instead of looping. **30‑min soak is not CI-gated** |
+| **B2** | Stable WS ~30 min + reconnect | Leave a tab open; drop the socket | **PASS (reconnect)** — the client retries and the session cookie re-authenticates the upgrade; a dead session or a taken-over tab stops retrying. **30‑min soak is not CI-gated.** Live flaps: see ops.md “Known issue”. |
 | **T1** | Empty-world tick p99 ≲ 50ms | `curl localhost:8080/stats` after ~30s with 0–1 players | **PASS** — empty tick p99 **0.016ms**, loop p99 **0.017ms**, lag p99 **0.81ms** |
 | **T2** | 200 bots in a hotspot: the loop fits inside the tick with margin, no WS collapse | `npm run bots:hotspot` | **PASS** — 200/200 joined, **loop p99 205.5ms of the 600ms budget (34%)**, **lag p99 1.0ms**, **0 frames dropped**, 0 sockets lost. Measured 2026-09-13 on a Ryzen 9 5900X. |
-| **T3** | Kill world mid-session — **no item dupe** | Gather → kill world → start world → reconnect same id | **PASS** — unit tests `TestCrashRecoveryNoItemDupe` + `TestCrashRecoveryNoPulpDupe` + `scripts/t3-world-kill.sh` |
+| **T3** | Kill world mid-session — **no item dupe** | Gather / smelt / forge / loot / pedlar → crash or double-click | **PASS** — `internal/world/nodupe_test.go` plus the older forage/mill crash tests and `scripts/nodupe-chaos.py` |
 | **T4** | `docker compose up` brings the stack; a browser can connect | `docker compose up --build` → open `:8080` | **PASS on a normal Docker Engine.** This agent VM’s Docker bridge drops inter-container packets (world cannot dial `postgres:5432` inside the compose network). Postgres + Redis still come up healthy on published ports; the Week 1 loop was played with `go run ./cmd/world` against those ports, plus `scripts/week1-loop.py` and a browser pass. |
 
 **Read `lagP99Ms`, not `tickP99Ms`.** Lag is how late a tick fired against its
@@ -475,7 +478,7 @@ internal/protocol  shared JSON frames
 client/            carved wood + parchment HUD + canvas hamlet
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
-scripts/           smoke, T3 helpers, south-fight, pick-npc-test, login helper, pg backup / restore / drill
+scripts/           smoke, T3 helpers, metal-loop, no-dupe chaos, pick-npc-test, login helper, pg backup / restore / drill
 docker-compose.yml world + postgres + redis
 ```
 

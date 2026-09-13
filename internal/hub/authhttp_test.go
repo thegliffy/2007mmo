@@ -455,3 +455,135 @@ func TestBannedLoginIsForbiddenNotServerError(t *testing.T) {
 		t.Fatal("a banned login must not set a session cookie")
 	}
 }
+
+func dialAuthed(t *testing.T, hr *harness, cookie *http.Cookie) *websocket.Conn {
+	t.Helper()
+	hdr := http.Header{}
+	hdr.Set("Cookie", cookie.Name+"="+cookie.Value)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL(hr.srv.URL), hdr)
+	if err != nil {
+		got := 0
+		if resp != nil {
+			got = resp.StatusCode
+		}
+		t.Fatalf("dial: %v (status %d)", err, got)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+func readUntilErr(t *testing.T, conn *websocket.Conn, timeout time.Duration) protocol.Err {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	for {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if !strings.Contains(string(data), `"t":"err"`) {
+			continue
+		}
+		var out protocol.Err
+		if err := json.Unmarshal(data, &out); err != nil {
+			t.Fatalf("decode err: %v", err)
+		}
+		return out
+	}
+}
+
+// A second login is the sole owner: the first cookie dies and its
+// socket is told it was replaced, so the old tab stops retrying.
+func TestLoginEvictsTheOtherDevice(t *testing.T) {
+	hr := newHarness(t)
+	first := hr.register(t, "Kyle")
+	conn := dialAuthed(t, hr, first)
+	if err := conn.WriteJSON(protocol.In{T: protocol.MsgHello}); err != nil {
+		t.Fatalf("hello: %v", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("wait welcome: %v", err)
+		}
+		if strings.Contains(string(data), `"t":"welcome"`) {
+			break
+		}
+	}
+
+	resp := hr.post(t, "/auth/login", protocol.AuthRequest{Username: "Kyle", Password: testPW}, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status %d", resp.StatusCode)
+	}
+	second := sessionCookieFrom(resp)
+	if second == nil {
+		t.Fatal("login set no cookie")
+	}
+
+	got := readUntilErr(t, conn, 3*time.Second)
+	if got.Code != protocol.ErrReplaced {
+		t.Fatalf("old socket err = %+v, want code %q", got, protocol.ErrReplaced)
+	}
+	if !strings.Contains(strings.ToLower(got.Msg), "somewhere else") {
+		t.Fatalf("old socket message %q should say signed in elsewhere", got.Msg)
+	}
+
+	if _, _, _, err := hr.hub.Auth.Resolve(context.Background(), first.Value); err == nil {
+		t.Fatal("the first cookie still resolves after a later login")
+	}
+	if _, _, _, err := hr.hub.Auth.Resolve(context.Background(), second.Value); err != nil {
+		t.Fatalf("the new cookie should work: %v", err)
+	}
+
+	// The dead cookie must not upgrade.
+	hdr := http.Header{}
+	hdr.Set("Cookie", first.Name+"="+first.Value)
+	_, up, err := websocket.DefaultDialer.Dial(wsURL(hr.srv.URL), hdr)
+	if err == nil {
+		t.Fatal("the revoked cookie still upgraded")
+	}
+	if up == nil || up.StatusCode != http.StatusUnauthorized {
+		got := 0
+		if up != nil {
+			got = up.StatusCode
+		}
+		t.Fatalf("revoked upgrade status %d, want 401", got)
+	}
+}
+
+// An authenticated join also revokes leftover sessions, so a device
+// that never posted /auth/login still becomes the sole owner.
+func TestJoinRevokesLeftoverSessions(t *testing.T) {
+	hr := newHarness(t)
+	cookie := hr.register(t, "Kyle")
+	acct, err := hr.mem.AccountByUsernameKey(context.Background(), "kyle")
+	if err != nil || acct == nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if err := hr.mem.CreateSession(context.Background(), "stale-other-device", acct.ID, time.Hour); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+
+	conn := dialAuthed(t, hr, cookie)
+	if err := conn.WriteJSON(protocol.In{T: protocol.MsgHello}); err != nil {
+		t.Fatalf("hello: %v", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("wait welcome: %v", err)
+		}
+		if strings.Contains(string(data), `"t":"welcome"`) {
+			break
+		}
+	}
+
+	if _, _, _, err := hr.hub.Auth.Resolve(context.Background(), "stale-other-device"); err == nil {
+		t.Fatal("a leftover session survived the join")
+	}
+	if _, _, _, err := hr.hub.Auth.Resolve(context.Background(), cookie.Value); err != nil {
+		t.Fatalf("the joining cookie should still work: %v", err)
+	}
+}
