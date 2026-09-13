@@ -19,10 +19,17 @@ const (
 
 	MsgWelcome = "welcome"
 	MsgState   = "state"
-	MsgSaid    = "chat"
-	MsgEvent   = "evt"
-	MsgPong    = "pong"
-	MsgErr     = "err"
+	// Same wire tag as MsgChat on purpose: direction disambiguates. A
+	// client sends {"t":"chat"} to speak, the server sends {"t":"chat"}
+	// to relay. Named twice so call sites read correctly.
+	MsgSaid  = "chat"
+	MsgEvent = "evt"
+	MsgPong  = "pong"
+	MsgErr   = "err"
+
+	// SessionCookie carries the login session. HttpOnly: script must not
+	// be able to read or forward it.
+	SessionCookie = "hollowmere_session"
 
 	ItemBerry = "berry"
 	ItemPulp  = "pulp"
@@ -46,16 +53,17 @@ const (
 )
 
 // In is every client → server frame. Unused fields stay empty.
+//
+// It deliberately carries no identity. Who you are is decided by the
+// session cookie on the WebSocket upgrade, so a client cannot name a
+// player id or a session token and be believed.
 type In struct {
-	T        string `json:"t"`
-	PlayerID string `json:"playerId,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Session  string `json:"session,omitempty"`
-	X        int    `json:"x,omitempty"`
-	Y        int    `json:"y,omitempty"`
-	ID       string `json:"id,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Ts       int64  `json:"ts,omitempty"`
+	T    string `json:"t"`
+	X    int    `json:"x,omitempty"`
+	Y    int    `json:"y,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Text string `json:"text,omitempty"`
+	Ts   int64  `json:"ts,omitempty"`
 }
 
 type Item struct {
@@ -68,6 +76,11 @@ type Skill struct {
 	Lv int `json:"lv"`
 }
 
+// PlayerView is what one player is allowed to know about another.
+//
+// ID is an opaque per-session handle, not the player's real id. Peers
+// need something stable across ticks to interpolate sprites; they must
+// never learn an identifier that could be replayed as a credential.
 type PlayerView struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
@@ -118,13 +131,33 @@ type ItemInfo struct {
 
 type Welcome struct {
 	T        string              `json:"t"`
-	PlayerID string              `json:"playerId"`
-	Session  string              `json:"session"`
+	Handle   string              `json:"handle"`
+	Username string              `json:"username"`
 	TickMs   int                 `json:"tickMs"`
 	World    string              `json:"world"`
 	Map      TileMap             `json:"map"`
 	You      YouView             `json:"you"`
 	Items    map[string]ItemInfo `json:"items"`
+}
+
+// Auth frames are HTTP JSON, not WebSocket, but they live here so the
+// browser client, the bot harness, and the smoke scripts agree.
+
+type AuthRequest struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	// Current and Next are used by POST /auth/password.
+	Current string `json:"current,omitempty"`
+	Next    string `json:"next,omitempty"`
+}
+
+type AuthResponse struct {
+	Username string `json:"username"`
+	World    string `json:"world"`
+}
+
+type AuthError struct {
+	Error string `json:"error"`
 }
 
 type State struct {
@@ -161,23 +194,35 @@ type Pong struct {
 }
 
 type Stats struct {
-	World        string  `json:"world"`
-	Tick         uint64  `json:"tick"`
-	TickMs       int     `json:"tickMs"`
-	TickP50Ms    float64 `json:"tickP50Ms"`
-	TickP99Ms    float64 `json:"tickP99Ms"`
-	TickMaxMs    float64 `json:"tickMaxMs"`
-	Samples      int     `json:"samples"`
-	Online       int     `json:"online"`
-	WS           int     `json:"ws"`
-	PlayersMem   int     `json:"playersMem"`
-	Joins        uint64  `json:"joins"`
-	Chats        uint64  `json:"chats"`
-	Actions      uint64  `json:"actions"`
-	LimitedHello uint64  `json:"limitedHello"`
-	LimitedWS    uint64  `json:"limitedWS"`
-	LimitedChat  uint64  `json:"limitedChat"`
-	LimitedConn  uint64  `json:"limitedConn"`
+	World     string  `json:"world"`
+	Tick      uint64  `json:"tick"`
+	TickMs    int     `json:"tickMs"`
+	TickP50Ms float64 `json:"tickP50Ms"`
+	TickP99Ms float64 `json:"tickP99Ms"`
+	TickMaxMs float64 `json:"tickMaxMs"`
+	// Loop covers the tick plus fanning state out to every client; Lag is
+	// how late each tick fired. Tick* alone excludes the fan-out.
+	LoopP50Ms     float64 `json:"loopP50Ms"`
+	LoopP99Ms     float64 `json:"loopP99Ms"`
+	LoopMaxMs     float64 `json:"loopMaxMs"`
+	LagP50Ms      float64 `json:"lagP50Ms"`
+	LagP99Ms      float64 `json:"lagP99Ms"`
+	LagMaxMs      float64 `json:"lagMaxMs"`
+	FramesDropped uint64  `json:"framesDropped"`
+	Samples       int     `json:"samples"`
+	Online        int     `json:"online"`
+	WS            int     `json:"ws"`
+	PlayersMem    int     `json:"playersMem"`
+	Joins         uint64  `json:"joins"`
+	Chats         uint64  `json:"chats"`
+	Actions       uint64  `json:"actions"`
+	LimitedHello  uint64  `json:"limitedHello"`
+	LimitedWS     uint64  `json:"limitedWS"`
+	LimitedChat   uint64  `json:"limitedChat"`
+	LimitedConn   uint64  `json:"limitedConn"`
+	UnauthWS      uint64  `json:"unauthWS"`
+	LimitedLogin  uint64  `json:"limitedLogin"`
+	LoginFails    uint64  `json:"loginFails"`
 }
 
 func Catalog() map[string]ItemInfo {

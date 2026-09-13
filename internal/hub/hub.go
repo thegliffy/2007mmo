@@ -5,25 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/thegliffy/2007mmo/internal/auth"
 	"github.com/thegliffy/2007mmo/internal/protocol"
 	"github.com/thegliffy/2007mmo/internal/store"
 	"github.com/thegliffy/2007mmo/internal/world"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
+// cmdKind identifies a queued client command.
 
 type cmdKind int
 
@@ -41,43 +36,74 @@ type cmd struct {
 	kind     cmdKind
 	client   *Client
 	playerID string
-	name     string
-	session  string
 	x, y     int
 	id       string
 	text     string
 }
 
+// Client is one authenticated WebSocket. Every identity field is set
+// before readLoop starts and never written again, so the reader and the
+// hub goroutine can both read them without synchronization.
 type Client struct {
-	id        string
+	playerID  string
+	accountID string
+	username  string
+	session   string
 	ip        string
 	conn      *websocket.Conn
 	send      chan []byte
+	done      chan struct{}
 	hub       *Hub
 	closeOnce sync.Once
+}
+
+// stop signals writeLoop to finish. The send channel is deliberately
+// never closed: sendJSON can race with a takeover, and sending on a
+// closed channel would panic the connection's goroutine.
+func (c *Client) stop() {
+	c.closeOnce.Do(func() { close(c.done) })
 }
 
 type Hub struct {
 	World   *world.World
 	PG      *store.Postgres
 	Redis   *store.Redis
+	Auth    *auth.Service
 	Tick    time.Duration
 	cmds    chan cmd
 	mu      sync.Mutex
 	clients map[string]*Client // playerID -> client
 	metrics *Metrics
 	limits  *limits
+
+	proxy   *proxyTrust
+	upgrade websocket.Upgrader
 }
 
-func New(w *world.World, pg *store.Postgres, rd *store.Redis, tick time.Duration) *Hub {
+// newUpgrader wires the origin check into the WebSocket handshake. This
+// matters far more now that the credential is a cookie: without it, any
+// page could open an authenticated socket as whoever is logged in.
+func newUpgrader(pt *proxyTrust) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 4096,
+		CheckOrigin:     pt.allowOrigin,
+	}
+}
+
+func New(w *world.World, pg *store.Postgres, rd *store.Redis, a *auth.Service, tick time.Duration) *Hub {
 	if tick <= 0 {
 		tick = time.Duration(protocol.TickMs) * time.Millisecond
 	}
+	pt := loadProxyTrust()
 	return &Hub{
 		World:   w,
 		PG:      pg,
 		Redis:   rd,
+		Auth:    a,
 		Tick:    tick,
+		proxy:   pt,
+		upgrade: newUpgrader(pt),
 		cmds:    make(chan cmd, 1024),
 		clients: make(map[string]*Client),
 		metrics: NewMetrics(),
@@ -88,22 +114,39 @@ func New(w *world.World, pg *store.Postgres, rd *store.Redis, tick time.Duration
 func (h *Hub) Run(ctx context.Context) {
 	t := time.NewTicker(h.Tick)
 	defer t.Stop()
+	// Presence is a 30s-TTL heartbeat, not simulation state. Writing it
+	// per client per tick put N synchronous Redis round-trips on the
+	// world's critical path; it lives on its own schedule now.
+	go h.presenceLoop(ctx)
+	var last time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case c := <-h.cmds:
 			h.handle(ctx, c)
-		case <-t.C:
+		case now := <-t.C:
+			// Three separate numbers, because they fail differently:
+			//   sim   - the authoritative step alone
+			//   loop  - sim plus fanning state out to every client
+			//   lag   - how late this tick fired against its schedule
+			// Gating on sim alone hid the fan-out, which is the half that
+			// grows with player count.
+			if !last.IsZero() {
+				h.metrics.ObserveLag(now.Sub(last) - h.Tick)
+			}
+			last = now
+
 			start := time.Now()
 			h.World.Tick(ctx)
-			elapsed := time.Since(start)
-			h.World.LastMs = float64(elapsed.Microseconds()) / 1000.0
-			h.metrics.Observe(elapsed)
+			sim := time.Since(start)
+			h.World.LastMs = float64(sim.Microseconds()) / 1000.0
+			h.metrics.Observe(sim)
 			h.metrics.SetTick(h.World.TickN)
 			h.metrics.SetOnline(h.World.OnlineCount(), len(h.World.Players))
 			h.broadcastState()
 			h.flushNotes()
+			h.metrics.ObserveLoop(time.Since(start))
 		}
 	}
 }
@@ -142,71 +185,72 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 	}
 }
 
+// onHello completes the join for an already-authenticated socket. It
+// takes no identity from the client: playerID and username were fixed by
+// the session cookie during the upgrade.
 func (h *Hub) onHello(ctx context.Context, c cmd) {
-	id := c.playerID
-	if _, err := uuid.Parse(id); err != nil {
-		id = uuid.NewString()
+	cl := c.client
+	if cl == nil || cl.playerID == "" {
+		return
 	}
-	name := world.SanitizeName(c.name)
-
-	if c.session != "" && h.Redis != nil {
-		if sid, err := h.Redis.GetSession(ctx, c.session); err == nil && sid != "" {
-			id = sid
-		}
-	}
+	id := cl.playerID
 
 	p := h.World.Players[id]
 	if p == nil {
 		rec, err := h.World.Store.LoadPlayer(ctx, id)
 		if err != nil {
 			log.Printf("load player: %v", err)
+			h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "the hamlet could not read your pack"})
+			return
 		}
 		if rec == nil {
-			rec = world.NewPlayerRec(id, name)
+			// CreateAccount writes account and player together, so this
+			// should be unreachable. Heal instead of refusing entry.
+			log.Printf("account %s had no player row; recreating", cl.accountID)
+			rec = world.NewPlayerRec(id, cl.username)
 			if err := h.World.Store.SavePlayer(ctx, rec); err != nil {
 				log.Printf("create player: %v", err)
-				h.sendJSON(c.client, protocol.Err{T: protocol.MsgErr, Msg: "could not enter the hamlet"})
+				h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "could not enter the hamlet"})
 				return
 			}
-		} else if name != "Wanderer" {
-			rec.Name = name
 		}
+		// The account username is the only source of a display name.
+		rec.Name = cl.username
 		p = h.World.UpsertPlayer(rec, true)
 	} else {
 		p.Online = true
-		if name != "Wanderer" {
-			p.Name = name
-		}
+		p.Name = world.SanitizeName(cl.username)
 	}
 
-	session := uuid.NewString()
+	// A fresh handle per join: a peer who noted your handle last session
+	// cannot use it to recognize you in this one.
+	handle := h.World.RotateHandle(p.ID)
+
 	if h.Redis != nil {
-		_ = h.Redis.SetSession(ctx, session, p.ID, 24*time.Hour)
 		_ = h.Redis.SetPresence(ctx, p.ID)
 	}
 
 	h.mu.Lock()
-	if old, ok := h.clients[p.ID]; ok && old != c.client {
+	if old, ok := h.clients[p.ID]; ok && old != cl {
 		_ = old.conn.Close()
-		old.closeSend()
+		old.stop()
 	}
-	c.client.id = p.ID
-	h.clients[p.ID] = c.client
+	h.clients[p.ID] = cl
 	h.metrics.SetWS(len(h.clients))
 	h.mu.Unlock()
 
 	h.metrics.AddJoin()
-	h.sendJSON(c.client, protocol.Welcome{
+	h.sendJSON(cl, protocol.Welcome{
 		T:        protocol.MsgWelcome,
-		PlayerID: p.ID,
-		Session:  session,
+		Handle:   handle,
+		Username: p.Name,
 		TickMs:   int(h.Tick / time.Millisecond),
 		World:    protocol.WorldName,
 		Map:      h.World.MapInfo(),
 		You:      h.World.Snapshot(p.ID).You,
 		Items:    protocol.Catalog(),
 	})
-	h.sendJSON(c.client, h.World.Snapshot(p.ID))
+	h.sendJSON(cl, h.World.Snapshot(p.ID))
 }
 
 func (h *Hub) pushNoteAndState(cl *Client, playerID string) {
@@ -256,6 +300,34 @@ func (h *Hub) onLeave(ctx context.Context, id string, c *Client) {
 	}
 }
 
+// presenceLoop refreshes the Redis presence keys for connected players.
+// The TTL is 30s, so a 10s cadence keeps them alive with room to spare.
+func (h *Hub) presenceLoop(ctx context.Context) {
+	if h.Redis == nil {
+		return
+	}
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.mu.Lock()
+			ids := make([]string, 0, len(h.clients))
+			for id := range h.clients {
+				ids = append(ids, id)
+			}
+			h.mu.Unlock()
+			for _, id := range ids {
+				writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				_ = h.Redis.SetPresence(writeCtx, id)
+				cancel()
+			}
+		}
+	}
+}
+
 func (h *Hub) broadcastState() {
 	h.mu.Lock()
 	ids := make([]string, 0, len(h.clients))
@@ -271,9 +343,6 @@ func (h *Hub) broadcastState() {
 			continue
 		}
 		h.sendJSON(cl, h.World.Snapshot(id))
-		if h.Redis != nil {
-			_ = h.Redis.SetPresence(context.Background(), id)
-		}
 	}
 }
 
@@ -286,8 +355,14 @@ func (h *Hub) broadcastJSON(v any) {
 	defer h.mu.Unlock()
 	for _, cl := range h.clients {
 		select {
+		case <-cl.done:
+			continue
+		default:
+		}
+		select {
 		case cl.send <- b:
 		default:
+			h.metrics.AddDroppedFrame()
 		}
 	}
 }
@@ -301,27 +376,53 @@ func (h *Hub) sendJSON(cl *Client, v any) {
 		return
 	}
 	select {
+	case <-cl.done:
+		return
+	default:
+	}
+	select {
 	case cl.send <- b:
 	default:
+		// The client is not draining fast enough. Dropping a state frame
+		// is survivable (the next one is a full snapshot), but silently
+		// dropping them meant "0 drops" in the load gate measured only
+		// whether sockets stayed open, not whether data arrived.
+		h.metrics.AddDroppedFrame()
 	}
 }
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := h.proxy.clientIP(r)
 	if !h.limits.conn.allow(ip) {
 		h.metrics.AddLimited("conn")
 		http.Error(w, "the gate is crowded", http.StatusTooManyRequests)
 		return
 	}
-	conn, err := upgrader.Upgrade(w, r, nil)
+
+	// Identity is settled before the upgrade. An unauthenticated socket
+	// never exists, so no frame can ever arrive from an unknown player.
+	token := sessionToken(r)
+	accountID, playerID, username, err := h.Auth.Resolve(r.Context(), token)
+	if err != nil || playerID == "" {
+		h.metrics.AddLimited("auth")
+		http.Error(w, "the gate is shut: log in first", http.StatusUnauthorized)
+		return
+	}
+
+	conn, err := h.upgrade.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	cl := &Client{
-		ip:   ip,
-		conn: conn,
-		send: make(chan []byte, 16),
-		hub:  h,
+		playerID:  playerID,
+		accountID: accountID,
+		username:  username,
+		session:   token,
+		ip:        ip,
+		conn:      conn,
+		send:      make(chan []byte, 16),
+		done:      make(chan struct{}),
+		hub:       h,
 	}
 	go cl.writeLoop()
 	cl.readLoop()
@@ -329,8 +430,9 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) readLoop() {
 	defer func() {
-		c.hub.cmds <- cmd{kind: cmdLeave, client: c, playerID: c.id}
+		c.hub.cmds <- cmd{kind: cmdLeave, client: c, playerID: c.playerID}
 		_ = c.conn.Close()
+		c.stop()
 	}()
 	c.conn.SetReadLimit(4096)
 	_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
@@ -347,7 +449,7 @@ func (c *Client) readLoop() {
 			continue
 		}
 		_ = c.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-		key := c.id
+		key := c.playerID
 		if key == "" {
 			key = c.ip
 		}
@@ -357,31 +459,27 @@ func (c *Client) readLoop() {
 		}
 		switch in.T {
 		case protocol.MsgHello:
-			helloKey := c.ip
-			if helloKey == "" {
-				helloKey = in.PlayerID
-			}
-			if !c.hub.limits.hello.allow(helloKey) {
+			if !c.hub.limits.hello.allow(c.ip) {
 				c.hub.metrics.AddLimited("hello")
 				c.hub.sendJSON(c, protocol.Err{T: protocol.MsgErr, Msg: "The gate is crowded. Wait a breath."})
 				continue
 			}
-			c.hub.cmds <- cmd{kind: cmdHello, client: c, playerID: in.PlayerID, name: in.Name, session: in.Session}
+			c.hub.cmds <- cmd{kind: cmdHello, client: c, playerID: c.playerID}
 		case protocol.MsgMove:
-			c.hub.cmds <- cmd{kind: cmdMove, client: c, playerID: c.id, x: in.X, y: in.Y}
+			c.hub.cmds <- cmd{kind: cmdMove, client: c, playerID: c.playerID, x: in.X, y: in.Y}
 		case protocol.MsgInteract:
-			c.hub.cmds <- cmd{kind: cmdInteract, client: c, playerID: c.id, id: in.ID}
+			c.hub.cmds <- cmd{kind: cmdInteract, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgAttack:
-			c.hub.cmds <- cmd{kind: cmdAttack, client: c, playerID: c.id, id: in.ID}
+			c.hub.cmds <- cmd{kind: cmdAttack, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgUse:
-			c.hub.cmds <- cmd{kind: cmdUse, client: c, playerID: c.id, id: in.ID}
+			c.hub.cmds <- cmd{kind: cmdUse, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgChat:
 			if !c.hub.limits.chat.allow(key) {
 				c.hub.metrics.AddLimited("chat")
 				c.hub.sendJSON(c, protocol.Err{T: protocol.MsgErr, Msg: "You are speaking too quickly."})
 				continue
 			}
-			c.hub.cmds <- cmd{kind: cmdChat, client: c, playerID: c.id, text: in.Text}
+			c.hub.cmds <- cmd{kind: cmdChat, client: c, playerID: c.playerID, text: in.Text}
 		case protocol.MsgPing:
 			c.hub.sendJSON(c, protocol.Pong{T: protocol.MsgPong, Ts: in.Ts})
 		}
@@ -393,11 +491,11 @@ func (c *Client) writeLoop() {
 	defer ping.Stop()
 	for {
 		select {
-		case msg, ok := <-c.send:
-			if !ok {
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
+		case <-c.done:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		case msg := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				return
@@ -443,25 +541,36 @@ func (h *Hub) ServeStats(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) stats() protocol.Stats {
 	p50, p99, max, n := h.metrics.Percentiles()
 	tick, ws, online, mem := h.metrics.Snapshot()
-	joins, chats, actions, lh, lw, lc, ln := h.metrics.Counters()
+	joins, chats, actions, lh, lw, lc, ln, la, ll, lf := h.metrics.Counters()
+	loopP50, loopP99, loopMax, lagP50, lagP99, lagMax, dropped := h.metrics.LoopPercentiles()
 	return protocol.Stats{
-		World:        protocol.WorldName,
-		Tick:         tick,
-		TickMs:       int(h.Tick / time.Millisecond),
-		TickP50Ms:    p50,
-		TickP99Ms:    p99,
-		TickMaxMs:    max,
-		Samples:      n,
-		Online:       online,
-		WS:           ws,
-		PlayersMem:   mem,
-		Joins:        joins,
-		Chats:        chats,
-		Actions:      actions,
-		LimitedHello: lh,
-		LimitedWS:    lw,
-		LimitedChat:  lc,
-		LimitedConn:  ln,
+		World:         protocol.WorldName,
+		Tick:          tick,
+		TickMs:        int(h.Tick / time.Millisecond),
+		TickP50Ms:     p50,
+		TickP99Ms:     p99,
+		TickMaxMs:     max,
+		LoopP50Ms:     loopP50,
+		LoopP99Ms:     loopP99,
+		LoopMaxMs:     loopMax,
+		LagP50Ms:      lagP50,
+		LagP99Ms:      lagP99,
+		LagMaxMs:      lagMax,
+		FramesDropped: dropped,
+		Samples:       n,
+		Online:        online,
+		WS:            ws,
+		PlayersMem:    mem,
+		Joins:         joins,
+		Chats:         chats,
+		Actions:       actions,
+		LimitedHello:  lh,
+		LimitedWS:     lw,
+		LimitedChat:   lc,
+		LimitedConn:   ln,
+		UnauthWS:      la,
+		LimitedLogin:  ll,
+		LoginFails:    lf,
 	}
 }
 
@@ -480,6 +589,18 @@ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP hollowmere_tick_max_ms Max tick duration in the rolling sample window.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_tick_max_ms gauge\n")
 	fmt.Fprintf(w, "hollowmere_tick_max_ms %.4f\n", s.TickMaxMs)
+	fmt.Fprintf(w, "# HELP hollowmere_loop_p99_ms Full cycle: tick plus the state fan-out to every client.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_loop_p99_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_loop_p99_ms %.4f\n", s.LoopP99Ms)
+	fmt.Fprintf(w, "# HELP hollowmere_loop_p50_ms Full cycle, median.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_loop_p50_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_loop_p50_ms %.4f\n", s.LoopP50Ms)
+	fmt.Fprintf(w, "# HELP hollowmere_tick_lag_p99_ms How late a tick fired against its schedule.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_tick_lag_p99_ms gauge\n")
+	fmt.Fprintf(w, "hollowmere_tick_lag_p99_ms %.4f\n", s.LagP99Ms)
+	fmt.Fprintf(w, "# HELP hollowmere_frames_dropped_total State frames discarded because a client was not draining.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_frames_dropped_total counter\n")
+	fmt.Fprintf(w, "hollowmere_frames_dropped_total %d\n", s.FramesDropped)
 	fmt.Fprintf(w, "# HELP hollowmere_online Players currently in the hamlet.\n")
 	fmt.Fprintf(w, "# TYPE hollowmere_online gauge\n")
 	fmt.Fprintf(w, "hollowmere_online %d\n", s.Online)
@@ -504,14 +625,13 @@ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"ws\"} %d\n", s.LimitedWS)
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"chat\"} %d\n", s.LimitedChat)
 	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"conn\"} %d\n", s.LimitedConn)
-}
-
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	fmt.Fprintf(w, "hollowmere_rate_limited_total{kind=\"login\"} %d\n", s.LimitedLogin)
+	fmt.Fprintf(w, "# HELP hollowmere_unauthenticated_ws_total WebSocket upgrades refused for a missing or dead session.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_unauthenticated_ws_total counter\n")
+	fmt.Fprintf(w, "hollowmere_unauthenticated_ws_total %d\n", s.UnauthWS)
+	fmt.Fprintf(w, "# HELP hollowmere_login_failures_total Rejected register, login, and password-change attempts.\n")
+	fmt.Fprintf(w, "# TYPE hollowmere_login_failures_total counter\n")
+	fmt.Fprintf(w, "hollowmere_login_failures_total %d\n", s.LoginFails)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -519,15 +639,14 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (c *Client) closeSend() {
-	c.closeOnce.Do(func() { close(c.send) })
-}
-
 type Metrics struct {
 	mu           sync.Mutex
 	samples      []float64
 	i            int
 	full         bool
+	loop         *ring
+	lag          *ring
+	dropped      uint64
 	tick         uint64
 	ws           int
 	online       int
@@ -539,10 +658,89 @@ type Metrics struct {
 	limitedWS    uint64
 	limitedChat  uint64
 	limitedConn  uint64
+	limitedAuth  uint64
+	limitedLogin uint64
+	loginFails   uint64
 }
 
 func NewMetrics() *Metrics {
-	return &Metrics{samples: make([]float64, 512)}
+	return &Metrics{
+		samples: make([]float64, 512),
+		loop:    newRing(512),
+		lag:     newRing(512),
+	}
+}
+
+// ring is a fixed-size window of millisecond samples.
+type ring struct {
+	vals []float64
+	i    int
+	full bool
+}
+
+func newRing(n int) *ring { return &ring{vals: make([]float64, n)} }
+
+func (r *ring) add(ms float64) {
+	r.vals[r.i] = ms
+	r.i = (r.i + 1) % len(r.vals)
+	if r.i == 0 {
+		r.full = true
+	}
+}
+
+// percentiles returns p50, p99 and max over the window.
+func (r *ring) percentiles() (p50, p99, max float64) {
+	n := r.i
+	if r.full {
+		n = len(r.vals)
+	}
+	if n == 0 {
+		return 0, 0, 0
+	}
+	cp := make([]float64, n)
+	copy(cp, r.vals[:n])
+	if r.full {
+		copy(cp, r.vals)
+	}
+	sort.Float64s(cp)
+	idx := n * 99 / 100
+	if idx >= n {
+		idx = n - 1
+	}
+	return cp[n*50/100], cp[idx], cp[n-1]
+}
+
+// ObserveLoop records a full cycle: simulation plus the state fan-out.
+func (m *Metrics) ObserveLoop(d time.Duration) {
+	m.mu.Lock()
+	m.loop.add(float64(d.Microseconds()) / 1000.0)
+	m.mu.Unlock()
+}
+
+// ObserveLag records how late a tick fired against its schedule. This is
+// the number that actually says whether the world is keeping up.
+func (m *Metrics) ObserveLag(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	m.mu.Lock()
+	m.lag.add(float64(d.Microseconds()) / 1000.0)
+	m.mu.Unlock()
+}
+
+func (m *Metrics) AddDroppedFrame() {
+	m.mu.Lock()
+	m.dropped++
+	m.mu.Unlock()
+}
+
+// LoopPercentiles reports loop and lag windows together.
+func (m *Metrics) LoopPercentiles() (loopP50, loopP99, loopMax, lagP50, lagP99, lagMax float64, dropped uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	loopP50, loopP99, loopMax = m.loop.percentiles()
+	lagP50, lagP99, lagMax = m.lag.percentiles()
+	return loopP50, loopP99, loopMax, lagP50, lagP99, lagMax, m.dropped
 }
 
 func (m *Metrics) Observe(d time.Duration) {
@@ -599,6 +797,15 @@ func (m *Metrics) AddAction() {
 	m.mu.Unlock()
 }
 
+// AddLoginFail counts a credential rejection. Kept apart from the
+// throttle counter: a spike in throttling means someone is guessing, a
+// spike here without throttling usually means people forgot a password.
+func (m *Metrics) AddLoginFail() {
+	m.mu.Lock()
+	m.loginFails++
+	m.mu.Unlock()
+}
+
 func (m *Metrics) AddLimited(kind string) {
 	m.mu.Lock()
 	switch kind {
@@ -610,14 +817,19 @@ func (m *Metrics) AddLimited(kind string) {
 		m.limitedChat++
 	case "conn":
 		m.limitedConn++
+	case "auth":
+		m.limitedAuth++
+	case "login":
+		m.limitedLogin++
 	}
 	m.mu.Unlock()
 }
 
-func (m *Metrics) Counters() (joins, chats, actions, hello, ws, chat, conn uint64) {
+func (m *Metrics) Counters() (joins, chats, actions, hello, ws, chat, conn, unauth, limitedLogin, loginFails uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.joins, m.chats, m.actions, m.limitedHello, m.limitedWS, m.limitedChat, m.limitedConn
+	return m.joins, m.chats, m.actions, m.limitedHello, m.limitedWS, m.limitedChat,
+		m.limitedConn, m.limitedAuth, m.limitedLogin, m.loginFails
 }
 
 func (m *Metrics) Percentiles() (p50, p99, max float64, n int) {

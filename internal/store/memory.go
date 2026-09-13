@@ -31,9 +31,7 @@ func (m *Memory) LoadPlayer(_ context.Context, id string) (*world.PlayerRec, err
 	if !ok {
 		return nil, nil
 	}
-	cp := p
-	cp.Inv = append([]world.ItemStack(nil), p.Inv...)
-	cp.Skills = copySkills(p.Skills)
+	cp := copyRec(&p)
 	return &cp, nil
 }
 
@@ -43,10 +41,7 @@ func (m *Memory) SavePlayer(_ context.Context, p *world.PlayerRec) error {
 	if m.Fail {
 		return errFailed
 	}
-	cp := *p
-	cp.Inv = append([]world.ItemStack(nil), p.Inv...)
-	cp.Skills = copySkills(p.Skills)
-	m.Players[p.ID] = cp
+	m.Players[p.ID] = copyRec(p)
 	return nil
 }
 
@@ -56,10 +51,7 @@ func (m *Memory) CommitAction(_ context.Context, p *world.PlayerRec, n *world.No
 	if m.Fail {
 		return errFailed
 	}
-	cp := *p
-	cp.Inv = append([]world.ItemStack(nil), p.Inv...)
-	cp.Skills = copySkills(p.Skills)
-	m.Players[p.ID] = cp
+	m.Players[p.ID] = copyRec(p)
 	if n != nil {
 		m.Nodes[n.ID] = *n
 	}
@@ -84,6 +76,19 @@ func (m *Memory) UpsertNode(_ context.Context, n world.NodeRec) error {
 	}
 	m.Nodes[n.ID] = n
 	return nil
+}
+
+// copyRec deep-copies everything a PlayerRec points at, so a stored row
+// can never be mutated through the caller's copy.
+func copyRec(p *world.PlayerRec) world.PlayerRec {
+	cp := *p
+	cp.Inv = append([]world.ItemStack(nil), p.Inv...)
+	cp.Skills = copySkills(p.Skills)
+	if p.HP != nil {
+		hp := *p.HP
+		cp.HP = &hp
+	}
+	return cp
 }
 
 func copySkills(in map[string]world.SkillState) map[string]world.SkillState {

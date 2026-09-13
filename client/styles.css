@@ -220,7 +220,7 @@ html, body {
   padding: 9px 10px;
   font: 14px Georgia, serif;
 }
-#chatform button, #enter, .scroll button {
+#chatform button, .scroll button, .authform button[type="submit"] {
   background: linear-gradient(#d4b27a, #b08950);
   border: 3px solid #3d2412;
   box-shadow: inset 0 1px 0 #f6e2c0, 2px 2px 0 #1a1008;
@@ -230,7 +230,7 @@ html, body {
   padding: 7px 16px;
   cursor: pointer;
 }
-#chatform button:active, #enter:active {
+#chatform button:active, .scroll button:active {
   transform: translate(1px, 1px);
   box-shadow: inset 0 1px 0 #1a1008;
 }
@@ -272,8 +272,66 @@ html, body {
   font: 16px Georgia, serif;
   box-shadow: inset 1px 1px 0 #c9a36d;
 }
-#enter { width: 100%; padding: 11px; font-size: 17px; }
+.authform button[type="submit"] { width: 100%; padding: 11px; font-size: 17px; margin-top: 4px; }
 .fine { font-size: 12px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.4; }
+
+/* ---- auth portal ---- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 18px 0 4px;
+  border-bottom: 3px solid #6b4423;
+}
+.tab {
+  flex: 1;
+  background: #dcc09028;
+  border: 3px solid #6b4423;
+  border-bottom: none;
+  color: var(--ink-soft);
+  font: bold 14px Georgia, serif;
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.tab.on {
+  background: #fff8e8;
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 #fbf3e0;
+}
+.authform.hidden { display: none; }
+.authmsg {
+  min-height: 1.2em;
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+.authmsg.bad { color: #8c2417; font-weight: bold; }
+.authmsg.good { color: #2f5a22; font-weight: bold; }
+.authform input:disabled, .authform button:disabled { opacity: 0.6; cursor: default; }
+
+#acct-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #6b4423;
+  font: 13px Georgia, serif;
+  text-decoration: underline;
+  cursor: pointer;
+}
+button.link:hover { color: var(--ink); }
+#form-password { margin-top: 10px; }
+#form-password label { display: block; font-size: 13px; margin: 8px 0 0; }
+#form-password input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  border: 2px solid #6b4423;
+  background: #fff8e8;
+  font: 14px Georgia, serif;
+}
+#form-password button[type="submit"] { margin-top: 10px; font-size: 14px; padding: 7px; }
 
 @media (max-width: 980px) {
   #desk { flex-direction: column; }

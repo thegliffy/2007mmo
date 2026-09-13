@@ -3,12 +3,6 @@
   const canvas = $("stage");
   const ctx = canvas.getContext("2d");
 
-  const KEYS = {
-    playerId: "hollowmere.playerId",
-    name: "hollowmere.name",
-    session: "hollowmere.session",
-  };
-
   const state = {
     ws: null,
     tickMs: 600,
@@ -26,13 +20,25 @@
     online: 0,
     lastMs: 0,
     reconnects: 0,
-    wantJoin: false,
-    dead: false,
+    handle: null,
+    username: null,
+    authed: false,
+    stopped: false,
   };
+
+  // The ?ws= override stays for local development only. On any other
+  // host a crafted link could have pointed the socket at someone else's
+  // server; the session cookie would not follow, but the override has no
+  // business existing in production either.
+  function isLocalHost() {
+    return location.hostname === "127.0.0.1" ||
+      location.hostname === "localhost" ||
+      location.hostname === "[::1]";
+  }
 
   function wsURL() {
     const q = new URLSearchParams(location.search);
-    if (q.get("ws")) return q.get("ws");
+    if (q.get("ws") && isLocalHost()) return q.get("ws");
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     return proto + "//" + location.host + "/ws";
   }
@@ -51,13 +57,8 @@
     el.textContent = text;
   }
 
-  function persistIdentity(id, name, session) {
-    if (id) localStorage.setItem(KEYS.playerId, id);
-    if (name) localStorage.setItem(KEYS.name, name);
-    if (session) localStorage.setItem(KEYS.session, session);
-  }
-
   function connect() {
+    if (state.stopped) return;
     if (state.ws && (state.ws.readyState === 0 || state.ws.readyState === 1)) return;
     setConn("wait", "connecting");
     const ws = new WebSocket(wsURL());
@@ -65,12 +66,9 @@
     ws.onopen = () => {
       setConn("on", "online");
       state.reconnects = 0;
-      ws.send(JSON.stringify({
-        t: "hello",
-        playerId: localStorage.getItem(KEYS.playerId) || "",
-        name: $("name").value.trim() || localStorage.getItem(KEYS.name) || "Wanderer",
-        session: localStorage.getItem(KEYS.session) || "",
-      }));
+      // No identity in the frame. The cookie sent with the upgrade already
+      // decided who this socket belongs to.
+      ws.send(JSON.stringify({ t: "hello" }));
       log("sys", "The stile opens. Hollowmere remembers your pack.");
     };
     ws.onmessage = (ev) => {
@@ -78,9 +76,15 @@
       try { msg = JSON.parse(ev.data); } catch { return; }
       onMsg(msg);
     };
-    ws.onclose = () => {
+    ws.onclose = async () => {
       setConn("off", "offline");
-      if (state.dead) return;
+      if (state.stopped) return;
+      // A refused upgrade looks exactly like a dropped socket from here,
+      // so ask the server which it was before retrying forever.
+      if (!(await checkSession())) {
+        showGate("Your session ended. Log in again.");
+        return;
+      }
       const wait = Math.min(8000, 600 * Math.pow(2, state.reconnects++));
       setConn("wait", "reconnect " + Math.ceil(wait / 1000) + "s");
       setTimeout(connect, wait);
@@ -114,7 +118,9 @@
         state.map = msg.map;
         state.you = msg.you;
         state.items = msg.items || {};
-        persistIdentity(msg.playerId, msg.you && msg.you.name, msg.session);
+        state.handle = msg.handle || null;
+        state.username = msg.username || null;
+        $("acct-name").textContent = state.username || "";
         $("gate").classList.add("hidden");
         renderSkills();
         renderVitals();
@@ -149,9 +155,14 @@
     }
   }
 
+  // Escapes for both element text and attribute values. The quote cases
+  // matter because esc() is used inside title="…"; names are sanitized
+  // server-side today, but that is not a property this function should
+  // depend on.
   function esc(s) {
     return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
   function renderSkills() {
@@ -162,11 +173,26 @@
       skillRow("Foraging", forage) + skillRow("Cooking", cook);
   }
 
+  // Mirror of LevelFromXP on the server: each level costs 25 + 15 per
+  // level already gained, and the cost of earlier levels is spent. The bar
+  // used `xp % need`, which treats total XP as progress into the current
+  // level — at 25 xp (exactly level 2, no progress) it showed 63%.
+  function levelProgress(xp, lv) {
+    let spent = 0;
+    let need = 25;
+    for (let l = 1; l < lv && l < 20; l++) {
+      spent += need;
+      need += 15;
+    }
+    const into = Math.max(0, xp - spent);
+    return { into, need, pct: Math.min(100, Math.round((into / Math.max(need, 1)) * 100)) };
+  }
+
   function skillRow(label, s) {
-    const need = 25 + (s.lv - 1) * 15;
-    const pct = Math.min(100, Math.round(((s.xp % Math.max(need, 1)) / need) * 100));
+    const { into, need, pct } = levelProgress(s.xp, s.lv);
     return '<div class="skill"><div class="row"><span>' + label + "</span><span>lv " +
-      s.lv + " · " + s.xp + " xp</span></div><div class=\"bar\"><i style=\"width:" + pct + '%"></i></div></div>';
+      s.lv + " · " + into + "/" + need + " xp</span></div><div class=\"bar\"><i style=\"width:" +
+      pct + '%"></i></div></div>';
   }
 
   function renderVitals() {
@@ -261,7 +287,8 @@
 
   const held = {};
   window.addEventListener("keydown", (e) => {
-    if (e.target === $("chat") || e.target === $("name")) return;
+    const tag = e.target && e.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
     const k = e.key.toLowerCase();
     if ("wasd".includes(k)) held[k] = true;
   });
@@ -271,7 +298,7 @@
   });
 
   setInterval(() => {
-    if (!state.you) return;
+    if (!state.you || !state.authed) return;
     let dx = 0, dy = 0;
     if (held.w) dy--;
     if (held.s) dy++;
@@ -289,17 +316,188 @@
     $("chat").value = "";
   });
 
-  $("enter").addEventListener("click", () => {
-    const name = $("name").value.trim() || "Wanderer";
-    persistIdentity(localStorage.getItem(KEYS.playerId), name);
-    state.wantJoin = true;
+  // ---- auth portal -------------------------------------------------------
+
+  async function authFetch(path, body) {
+    const opts = {
+      method: body === undefined ? "GET" : "POST",
+      credentials: "same-origin",
+      headers: {},
+    };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch {
+      return { ok: false, status: 0, error: "Hollowmere is not answering." };
+    }
+    let data = {};
+    try { data = await res.json(); } catch { /* empty body is fine */ }
+    return { ok: res.ok, status: res.status, error: data.error, username: data.username };
+  }
+
+  function showGate(message, kind) {
+    state.authed = false;
+    state.stopped = true;
+    if (state.ws) { try { state.ws.close(); } catch { /* already gone */ } }
+    state.ws = null;
+    state.you = null;
+    state.map = null;
+    $("gate").classList.remove("hidden");
+    selectTab("login");
+    // selectTab clears the message, so set it afterwards.
+    authMsg(message || "", message ? (kind || "bad") : "");
+  }
+
+  function authMsg(text, kind) {
+    const el = $("auth-msg");
+    el.textContent = text || "";
+    el.className = "authmsg" + (kind ? " " + kind : "");
+  }
+
+  function acctMsg(text, kind) {
+    const el = $("acct-msg");
+    el.textContent = text || "";
+    el.className = "authmsg" + (kind ? " " + kind : "");
+  }
+
+  // checkSession reports whether the cookie is still good.
+  async function checkSession() {
+    const r = await authFetch("/auth/me");
+    if (r.ok) {
+      state.username = r.username || state.username;
+      $("acct-name").textContent = state.username || "";
+      return true;
+    }
+    return false;
+  }
+
+  function enterWorld(username) {
+    state.username = username || state.username;
+    state.authed = true;
+    state.stopped = false;
+    state.reconnects = 0;
+    $("acct-name").textContent = state.username || "";
+    authMsg("");
     connect();
-  });
-  $("name").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") $("enter").click();
+  }
+
+  function selectTab(which) {
+    const login = which === "login";
+    $("tab-login").classList.toggle("on", login);
+    $("tab-register").classList.toggle("on", !login);
+    $("tab-login").setAttribute("aria-selected", String(login));
+    $("tab-register").setAttribute("aria-selected", String(!login));
+    $("form-login").classList.toggle("hidden", !login);
+    $("form-register").classList.toggle("hidden", login);
+    authMsg("");
+  }
+
+  $("tab-login").addEventListener("click", () => selectTab("login"));
+  $("tab-register").addEventListener("click", () => selectTab("register"));
+
+  function busy(form, on) {
+    for (const el of form.querySelectorAll("input,button")) el.disabled = on;
+  }
+
+  $("form-login").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const username = $("login-user").value.trim();
+    const password = $("login-pass").value;
+    if (!username || !password) {
+      authMsg("A name and a password, please.", "bad");
+      return;
+    }
+    busy(form, true);
+    authMsg("Knocking…");
+    const r = await authFetch("/auth/login", { username, password });
+    busy(form, false);
+    if (!r.ok) {
+      authMsg(r.error || "That did not work.", "bad");
+      return;
+    }
+    $("login-pass").value = "";
+    enterWorld(r.username);
   });
 
-  $("name").value = localStorage.getItem(KEYS.name) || "";
+  $("form-register").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const username = $("reg-user").value.trim();
+    const password = $("reg-pass").value;
+    if (password !== $("reg-pass2").value) {
+      authMsg("Those two passwords are not the same.", "bad");
+      return;
+    }
+    busy(form, true);
+    authMsg("Carving your name…");
+    const r = await authFetch("/auth/register", { username, password });
+    busy(form, false);
+    if (!r.ok) {
+      authMsg(r.error || "That did not work.", "bad");
+      return;
+    }
+    $("reg-pass").value = "";
+    $("reg-pass2").value = "";
+    enterWorld(r.username);
+  });
+
+  $("do-logout").addEventListener("click", async () => {
+    // Logging out closes the socket server-side. Stop the reconnect path
+    // first, or its onclose handler races this one for the gate message.
+    state.stopped = true;
+    await authFetch("/auth/logout", {});
+    $("form-password").classList.add("hidden");
+    acctMsg("");
+    showGate("You have left the hamlet. Come back soon.", "good");
+  });
+
+  $("show-pw").addEventListener("click", () => {
+    $("form-password").classList.toggle("hidden");
+    acctMsg("");
+  });
+
+  $("cancel-pw").addEventListener("click", () => {
+    $("form-password").classList.add("hidden");
+    acctMsg("");
+  });
+
+  $("form-password").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const current = $("pw-current").value;
+    const next = $("pw-next").value;
+    if (next !== $("pw-next2").value) {
+      acctMsg("Those two passwords are not the same.", "bad");
+      return;
+    }
+    busy(form, true);
+    const r = await authFetch("/auth/password", { current, next });
+    busy(form, false);
+    if (!r.ok) {
+      acctMsg(r.error || "That did not work.", "bad");
+      return;
+    }
+    $("pw-current").value = "";
+    $("pw-next").value = "";
+    $("pw-next2").value = "";
+    $("form-password").classList.add("hidden");
+    acctMsg("Password changed. Other sessions were signed out.", "good");
+  });
+
+  // Boot: a live cookie walks straight in, otherwise the portal shows.
+  (async () => {
+    if (await checkSession()) {
+      enterWorld(state.username);
+    } else {
+      $("gate").classList.remove("hidden");
+      selectTab("login");
+    }
+  })();
 
   setInterval(() => {
     if (state.ws && state.ws.readyState === 1) send({ t: "ping", ts: Date.now() });
@@ -329,6 +527,8 @@
       ctx.fillText("Waiting at the stile…", 24, 40);
       return;
     }
+    // Derive from the canvas, not m.tile: the canvas is a fixed size and
+    // the map dimensions decide the rest. m.tile is advisory only.
     const tw = canvas.width / m.w;
     const th = canvas.height / m.h;
     const now = performance.now();

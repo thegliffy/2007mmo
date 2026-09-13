@@ -2,10 +2,11 @@
 """Attack a southern Thornkin over WS until it falls. Combat v0 smoke."""
 import asyncio
 import json
+import os
 import sys
-import uuid
 
-import websockets
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hollow_auth
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "ws://127.0.0.1:8080/ws"
 
@@ -24,9 +25,7 @@ async def read_until(ws, typ, timeout=12):
 
 
 async def main():
-    pid = str(uuid.uuid4())
-    ws = await websockets.connect(URL)
-    await ws.send(json.dumps({"t": "hello", "playerId": pid, "name": "KyleFight"}))
+    ws, _ = await hollow_auth.join(URL, "KyleFight")
     welcome = await read_until(ws, "welcome")
     state = await read_until(ws, "state")
     tiles = welcome.get("map", {}).get("tiles") or []
