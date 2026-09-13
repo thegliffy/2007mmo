@@ -17,6 +17,8 @@ const (
 	MsgChat     = "chat"
 	MsgDrop     = "drop"
 	MsgLight    = "light"
+	MsgBuy      = "buy"
+	MsgSell     = "sell"
 	MsgPing     = "ping"
 
 	MsgWelcome = "welcome"
@@ -28,6 +30,7 @@ const (
 	MsgEvent = "evt"
 	MsgPong  = "pong"
 	MsgErr   = "err"
+	MsgTrade = "trade"
 
 	// SessionCookie carries the login session. HttpOnly: script must not
 	// be able to read or forward it.
@@ -113,6 +116,22 @@ type YouView struct {
 }
 
 // GroundView is a pile lying in the grass.
+// TradeOffer is one line of the pedlar's board. Pays is what she gives
+// for one; Costs is what she charges. Zero means she will not deal in it
+// that direction.
+type TradeOffer struct {
+	Item  string `json:"item"`
+	Pays  int    `json:"pays,omitempty"`
+	Costs int    `json:"costs,omitempty"`
+}
+
+// Trade is pushed when a player reaches the pedlar.
+type Trade struct {
+	T      string       `json:"t"`
+	With   string       `json:"with"`
+	Offers []TradeOffer `json:"offers"`
+}
+
 type GroundView struct {
 	ID    string `json:"id"`
 	X     int    `json:"x"`
@@ -148,6 +167,7 @@ type NPCView struct {
 	HP      int    `json:"hp,omitempty"`
 	MaxHP   int    `json:"maxHp,omitempty"`
 	Hostile bool   `json:"hostile,omitempty"`
+	Trader  bool   `json:"trader,omitempty"`
 }
 
 type TileMap struct {

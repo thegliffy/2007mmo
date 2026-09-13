@@ -45,6 +45,34 @@ Week 1 is still the woodland-life cut under the new map.
 
 **Camera:** still **top-down**. A ¾ view is a follow-up.
 
+### The pedlar
+
+**Wend the Pedlar** keeps to the path by the millstone. Click her to walk over
+and open her board.
+
+| | She pays | She charges |
+|---|---|---|
+| Brambleberry, Hazel nut | 1 | — |
+| Log | 2 | — |
+| Bramble pulp | 3 | — |
+| Roast hazel | 5 | 12 |
+| Hearth tart | 7 | 16 |
+| Paper | 8 | — |
+| Goblin leather | 25 | — |
+
+She buys most of what the hamlet produces and sells cooked food, which is what
+coins were always going to be for: **fighting pays in coin, and coin buys the
+food that lets you fight something bigger.** A Thornkin is worth 3–8 coins and a
+hearth tart costs 16, so a tart is about three kills, and it mends 4 heart.
+
+She always pays less than she charges — there is a test that fails if that ever
+stops being true, because the alternative is a money printer.
+
+A trade moves items and coins together, so it goes through the same
+commit-before-memory path as everything else. A store failure loses the trade
+rather than paying twice, and the board only enables a row when the exchange can
+actually happen, so it never invites a refusal.
+
 ### Wood
 
 Trees are work now, not scenery. **72 of the 75** on the map can be chopped —

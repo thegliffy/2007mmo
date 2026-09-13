@@ -64,6 +64,7 @@ type Player struct {
 	ActionTicks  int
 	ActionNode   string
 	ActionGround string
+	ActionTrader string
 	ActionItem   string
 	Inv          []ItemStack
 	Skills       map[string]SkillState
@@ -99,6 +100,7 @@ type NPC struct {
 	HomeY       int
 	WanderEvery int
 	Hostile     bool
+	Trader      bool
 	HP          int
 	MaxHP       int
 	Dmg         int
@@ -127,6 +129,7 @@ type World struct {
 	LastMs    float64
 	groundSeq int
 	notes     map[string]string
+	tradeOpen map[string]string
 	// rng rolls loot. The simulation itself stays deterministic — this is
 	// only ever consulted for drops, which no crash-recovery guarantee
 	// depends on. Owned by the World rather than global so a test can pin
@@ -320,7 +323,11 @@ func (w *World) SetDest(id string, x, y int) {
 }
 
 func (w *World) SetInteract(id, nodeID string) {
-	if w.npcByID(nodeID) != nil {
+	if npc := w.npcByID(nodeID); npc != nil {
+		if npc.Trader {
+			w.SetTrade(id, nodeID)
+			return
+		}
 		w.SetAttack(id, nodeID)
 		return
 	}
@@ -409,6 +416,7 @@ func (w *World) Tick(ctx context.Context) {
 		w.tickCombat(ctx, p)
 		w.tickAction(ctx, p)
 		w.tickPickup(ctx, p)
+		w.tickTrade(p)
 		if w.TickN%10 == 0 && p.Dirty {
 			_ = w.Store.SavePlayer(ctx, recFromPlayer(p))
 			p.Dirty = false
@@ -794,7 +802,7 @@ func (w *World) Snapshot(id string) protocol.State {
 		}
 		npcs = append(npcs, protocol.NPCView{
 			ID: n.ID, Name: n.Name, X: n.X, Y: n.Y,
-			HP: n.HP, MaxHP: n.MaxHP, Hostile: n.Hostile,
+			HP: n.HP, MaxHP: n.MaxHP, Hostile: n.Hostile, Trader: n.Trader,
 		})
 	}
 	// Only what is not at rest. The client already has every node's
@@ -1017,5 +1025,6 @@ func cancelAction(p *Player) {
 	p.ActionTicks = 0
 	p.ActionNode = ""
 	p.ActionGround = ""
+	p.ActionTrader = ""
 	p.ActionItem = ""
 }

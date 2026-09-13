@@ -16,6 +16,7 @@
     ground: [],
     items: {},
     skillInfo: {},
+    shop: null,
     last: null,
     prevPos: {},
     lastTickAt: 0,
@@ -163,6 +164,7 @@
         renderSkills();
         renderVitals();
         renderInv();
+        if (state.shop) renderShop();
         $("tickinfo").textContent = "tick " + msg.n + " · " + msg.online + " online · " + (msg.ms || 0).toFixed(1) + "ms";
         break;
       case "chat":
@@ -170,9 +172,15 @@
         break;
       case "evt":
         log("evt", esc(msg.text));
+        if (state.shop) shopMsg(msg.text);
         break;
       case "err":
         log("sys", esc(msg.msg));
+        break;
+      case "trade":
+        state.shop = msg;
+        renderShop();
+        $("shop").classList.remove("hidden");
         break;
       case "pong":
         break;
@@ -244,6 +252,58 @@
       (targetName ? '<p class="target">Upon the ' + esc(targetName) + "</p>" : "") +
       "</div>";
   }
+
+  // The pedlar's board. Left column is what she stocks, right is what she
+  // will take off you; a row is only clickable if the trade can actually
+  // happen, so the panel never invites a refusal.
+  function renderShop() {
+    const shop = state.shop;
+    if (!shop) return;
+    const coins = (state.you && state.you.coins) || 0;
+    const inv = {};
+    for (const it of (state.you && state.you.inv) || []) inv[it.id] = it.n;
+
+    $("shop-who").textContent = shop.with || "The Pedlar";
+    $("shop-purse").textContent = coins === 1 ? "1 coin" : coins + " coins";
+
+    const name = (id) => (state.items[id] && state.items[id].name) || id;
+    const row = (id, priceLabel, sub, disabled, action) =>
+      '<button class="shoprow" data-action="' + action + '" data-id="' + esc(id) + '"' +
+      (disabled ? " disabled" : "") + '><span>' + esc(name(id)) +
+      (sub ? ' <span class="held">' + esc(sub) + "</span>" : "") +
+      '</span><span class="coin">' + esc(priceLabel) + "</span></button>";
+
+    const sells = (shop.offers || []).filter((o) => o.costs > 0);
+    $("shop-sells").innerHTML = sells.length
+      ? sells.map((o) => row(o.item, o.costs + "c", "", coins < o.costs, "buy")).join("")
+      : '<p class="shopempty">Nothing today.</p>';
+
+    const buys = (shop.offers || []).filter((o) => o.pays > 0);
+    $("shop-buys").innerHTML = buys.length
+      ? buys
+          .map((o) =>
+            row(o.item, o.pays + "c", inv[o.item] ? "x" + inv[o.item] : "", !inv[o.item], "sell")
+          )
+          .join("")
+      : '<p class="shopempty">She wants for nothing.</p>';
+  }
+
+  function shopMsg(text) {
+    const el = $("shop-msg");
+    if (el) el.textContent = text || "";
+  }
+
+  $("shop").addEventListener("click", (e) => {
+    const btn = e.target.closest(".shoprow");
+    if (!btn || btn.disabled) return;
+    send({ t: btn.dataset.action, id: btn.dataset.id });
+  });
+
+  $("shop-close").addEventListener("click", () => {
+    state.shop = null;
+    shopMsg("");
+    $("shop").classList.add("hidden");
+  });
 
   function renderInv() {
     const purse = $("purse");

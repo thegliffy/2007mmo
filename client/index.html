@@ -53,6 +53,7 @@
               <li>Click the <em>sack</em> it leaves behind to gather what fell</li>
               <li>Chop a <em>tree</em> for logs — pulp one at the millstone for <em>paper</em></li>
               <li>Drop a log and <em>right-click</em> it to light a fire you can cook at</li>
+              <li>Click <em>Wend the Pedlar</em> by the millstone to sell what you gather</li>
             </ol>
           </section>
           <section class="panel">
@@ -90,6 +91,26 @@
           <button type="submit">Say</button>
         </form>
       </section>
+    </div>
+  </div>
+
+  <div id="shop" class="overlay hidden">
+    <div class="scroll shopscroll">
+      <p class="seal">Hollowmere</p>
+      <h1 id="shop-who">The Pedlar</h1>
+      <p class="tag">Purse: <strong id="shop-purse">0 coins</strong></p>
+      <div class="shopcols">
+        <section>
+          <h2>She sells</h2>
+          <div id="shop-sells" class="shoplist"></div>
+        </section>
+        <section>
+          <h2>She buys</h2>
+          <div id="shop-buys" class="shoplist"></div>
+        </section>
+      </div>
+      <p id="shop-msg" class="authmsg" role="status" aria-live="polite"></p>
+      <button id="shop-close" type="button">Be on your way</button>
     </div>
   </div>
 
@@ -138,7 +159,7 @@
     </div>
   </div>
 
-  <script src="pick-npc.js?v=wood-1"></script>
-  <script src="app.js?v=wood-1"></script>
+  <script src="pick-npc.js?v=trade-1"></script>
+  <script src="app.js?v=trade-1"></script>
 </body>
 </html>

@@ -30,6 +30,8 @@ const (
 	cmdUse
 	cmdDrop
 	cmdLight
+	cmdBuy
+	cmdSell
 	cmdChat
 	cmdLeave
 )
@@ -167,6 +169,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.metrics.SetOnline(h.World.OnlineCount(), len(h.World.Players))
 			h.broadcastState()
 			h.flushNotes()
+			h.flushTrades()
 			h.metrics.ObserveLoop(time.Since(start))
 		}
 	}
@@ -196,6 +199,22 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 		}
 	case cmdLight:
 		if text, ok := h.World.LightFire(c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdBuy:
+		if text, ok := h.World.Buy(ctx, c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
+	case cmdSell:
+		if text, ok := h.World.Sell(ctx, c.playerID, c.id); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
 			if ok {
 				h.metrics.AddAction()
@@ -301,6 +320,28 @@ func (h *Hub) pushNoteAndState(cl *Client, playerID string) {
 	}
 	if cl != nil && playerID != "" {
 		h.sendJSON(cl, h.World.Snapshot(playerID))
+	}
+}
+
+// flushTrades pushes the pedlar's board to anyone who just reached her.
+func (h *Hub) flushTrades() {
+	h.mu.Lock()
+	ids := make([]string, 0, len(h.clients))
+	for id := range h.clients {
+		ids = append(ids, id)
+	}
+	h.mu.Unlock()
+	for _, id := range ids {
+		with := h.World.TakeTradeOpen(id)
+		if with == "" {
+			continue
+		}
+		h.mu.Lock()
+		cl := h.clients[id]
+		h.mu.Unlock()
+		h.sendJSON(cl, protocol.Trade{
+			T: protocol.MsgTrade, With: with, Offers: world.TradeBoard(),
+		})
 	}
 }
 
@@ -552,6 +593,10 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdDrop, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgLight:
 			c.hub.cmds <- cmd{kind: cmdLight, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgBuy:
+			c.hub.cmds <- cmd{kind: cmdBuy, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgSell:
+			c.hub.cmds <- cmd{kind: cmdSell, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgChat:
 			if !c.hub.limits.chat.allow(key) {
 				c.hub.metrics.AddLimited("chat")

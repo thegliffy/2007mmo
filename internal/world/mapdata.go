@@ -171,6 +171,10 @@ func seedNPCs() []*NPC {
 		{ID: "npc-marta", Name: "Marta", X: 3, Y: 5, HomeX: 3, HomeY: 5, WanderEvery: 4, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
 		// Beside the brambles rather than inside one: (18,2) is a bush tile.
 		{ID: "npc-fen", Name: "Old Fen", X: 17, Y: 2, HomeX: 17, HomeY: 2, WanderEvery: 5, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
+		// The pedlar keeps to the path by the millstone, so she is on the
+		// way to everything rather than tucked in a corner.
+		{ID: "npc-wend", Name: "Wend the Pedlar", X: 10, Y: 5, HomeX: 10, HomeY: 5,
+			WanderEvery: 0, Trader: true, MinX: 10, MaxX: 10, MinY: 5, MaxY: 5},
 		{ID: "npc-pip", Name: "Pip", X: 9, Y: 8, HomeX: 9, HomeY: 8, WanderEvery: 2, MinX: 1, MaxX: 22, MinY: 1, MaxY: 14},
 		{
 			ID: "npc-thornkin-1", Name: "Thornkin", X: 10, Y: 22, HomeX: 10, HomeY: 22,
