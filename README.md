@@ -18,7 +18,7 @@ Hollowmere now has a **real front door**. There is no anonymous entry.
 2. **The session is an HttpOnly cookie.** No script on the page can read it, so an XSS or a hostile link cannot carry your login away. Nothing identity-shaped lives in `localStorage` any more.
 3. **The WebSocket is authenticated before it opens.** `/ws` refuses to upgrade without a valid session, and the join frame carries **no** identity — so a client can no longer name a player id and be believed.
 4. **Peers see an opaque handle**, not your player id. The handle is fresh every time you walk in, so nobody can follow you across sessions by remembering it.
-5. **Change your password** from the Account panel. Doing so signs out every other session and closes its socket.
+5. **One live session.** Logging in (or joining with a valid cookie) signs that account out everywhere else — other tabs, other devices, leftover Redis tokens. The old socket is told `Signed in somewhere else` and does not retry. Changing your password from the Account panel does the same.
 6. **Cross-site requests are refused**: the WebSocket checks `Origin`, and the auth endpoints require a same-origin JSON post.
 
 One account owns one character. There is no *self-service* password reset — no email is collected — so recovery is an operator running `admin reset <name>` on the host, which issues a fresh random password and signs the account out everywhere. See **[docs/ops.md](docs/ops.md)** A6.
@@ -339,7 +339,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p0-1` and `pick-npc.js?v=p0-1` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p0-2` and `pick-npc.js?v=p0-2` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 

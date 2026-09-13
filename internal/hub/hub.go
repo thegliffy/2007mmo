@@ -299,11 +299,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		// Tell the old tab to stop retrying. Without this, a second
 		// window (or a flapping reconnect) kicks the first, which
 		// reconnects, which kicks the second — forever.
-		h.sendJSON(old, protocol.Err{
-			T:    protocol.MsgErr,
-			Msg:  "This session opened in another window.",
-			Code: "replaced",
-		})
+		h.sendJSON(old, replacedErr())
 		old.stop()
 	}
 	h.clients[p.ID] = cl
@@ -435,13 +431,13 @@ func (h *Hub) heartbeatLoop(ctx context.Context) {
 					// live tab then reconnects, looks fine, and flaps.
 					if playerID != cl.playerID && playerID != "" {
 						h.metrics.AddLimited("auth")
-						h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again.", Code: "session"})
+						h.sendJSON(cl, sessionErr())
 						cl.stop()
 						continue
 					}
 					if sessionDead(err) {
 						h.metrics.AddLimited("auth")
-						h.sendJSON(cl, protocol.Err{T: protocol.MsgErr, Msg: "Your session ended. Log in again.", Code: "session"})
+						h.sendJSON(cl, sessionErr())
 						cl.stop()
 						continue
 					}
@@ -546,6 +542,9 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the gate is shut: log in first", http.StatusUnauthorized)
 		return
 	}
+	// This cookie is now the only live session. Other devices holding
+	// an older token lose it here, not ten seconds later on heartbeat.
+	h.takeSoleSession(r.Context(), accountID, token)
 
 	conn, err := h.upgrade.Upgrade(w, r, nil)
 	if err != nil {

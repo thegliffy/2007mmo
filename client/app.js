@@ -185,15 +185,13 @@
         break;
       case "err":
         log("sys", esc(msg.msg));
-        // Server-told ends: do not reconnect. A "replaced" flap (two tabs
-        // kicking each other) is how the live host used to look busy.
+        // Server-told ends: do not reconnect. A later login (other tab
+        // or other device) sends replaced; a dead cookie sends session.
         if (msg.code === "replaced" || msg.code === "session") {
           state.stopped = true;
-          if (msg.code === "session") {
-            showGate(msg.msg || "Your session ended. Log in again.");
-          } else {
-            setConn("off", "elsewhere");
-          }
+          showGate(msg.msg || (msg.code === "replaced"
+            ? "Signed in somewhere else."
+            : "Your session ended. Log in again."));
         }
         break;
       case "trade":

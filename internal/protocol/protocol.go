@@ -32,6 +32,10 @@ const (
 	MsgErr   = "err"
 	MsgTrade = "trade"
 
+	// Err codes on {"t":"err"}. The client stops reconnecting on these.
+	ErrReplaced = "replaced"
+	ErrSession  = "session"
+
 	// SessionCookie carries the login session. HttpOnly: script must not
 	// be able to read or forward it.
 	SessionCookie = "hollowmere_session"

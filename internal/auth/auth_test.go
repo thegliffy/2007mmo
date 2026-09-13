@@ -57,6 +57,49 @@ func TestRegisterThenLogin(t *testing.T) {
 	if tok2 == token {
 		t.Fatal("login reused the previous session token")
 	}
+	// The register cookie must be dead. One account, one live session.
+	if _, _, _, err := svc.Resolve(ctx, token); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("the previous session survived login: %v", err)
+	}
+	if _, _, _, err := svc.Resolve(ctx, tok2); err != nil {
+		t.Fatalf("the new session should work: %v", err)
+	}
+}
+
+func TestLoginRevokesPriorSessions(t *testing.T) {
+	svc, mem := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, first, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	_, _, _, second, err := svc.Login(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if got := mem.SessionCount(acctID); got != 1 {
+		t.Fatalf("expected 1 live session after login, got %d", got)
+	}
+	if _, _, _, err := svc.Resolve(ctx, first); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("first session survived a later login: %v", err)
+	}
+	if _, _, _, err := svc.Resolve(ctx, second); err != nil {
+		t.Fatalf("the latest session should work: %v", err)
+	}
+
+	_, _, _, third, err := svc.Login(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+	if _, _, _, err := svc.Resolve(ctx, second); !errors.Is(err, ErrNoSession) {
+		t.Fatal("the middle session survived another login")
+	}
+	if _, _, _, err := svc.Resolve(ctx, third); err != nil {
+		t.Fatalf("the newest session should work: %v", err)
+	}
+	if got := mem.SessionCount(acctID); got != 1 {
+		t.Fatalf("expected 1 live session, got %d", got)
+	}
 }
 
 func TestLoginRejectsWrongPassword(t *testing.T) {
@@ -123,15 +166,16 @@ func TestResolveSession(t *testing.T) {
 }
 
 func TestLogoutInvalidatesOnlyThatSession(t *testing.T) {
-	svc, _ := newTestService(t)
+	svc, mem := newTestService(t)
 	ctx := context.Background()
 	acctID, _, _, first, err := svc.Register(ctx, "Kyle", goodPW)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	_, _, _, second, err := svc.Login(ctx, "Kyle", goodPW)
-	if err != nil {
-		t.Fatalf("login: %v", err)
+	// Login would revoke `first`. Inject a sibling so we can still prove
+	// Logout is scoped to one token, not the whole account.
+	if err := mem.CreateSession(ctx, "sibling", acctID, time.Hour); err != nil {
+		t.Fatalf("inject: %v", err)
 	}
 	if err := svc.Logout(ctx, first); err != nil {
 		t.Fatalf("logout: %v", err)
@@ -139,10 +183,9 @@ func TestLogoutInvalidatesOnlyThatSession(t *testing.T) {
 	if _, _, _, err := svc.Resolve(ctx, first); !errors.Is(err, ErrNoSession) {
 		t.Fatalf("logged-out token still resolves: %v", err)
 	}
-	if _, _, _, err := svc.Resolve(ctx, second); err != nil {
+	if _, _, _, err := svc.Resolve(ctx, "sibling"); err != nil {
 		t.Fatalf("the other session should survive: %v", err)
 	}
-	_ = acctID
 }
 
 // Changing a password must kill every other session, so a stolen cookie
@@ -150,14 +193,16 @@ func TestLogoutInvalidatesOnlyThatSession(t *testing.T) {
 func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 	svc, mem := newTestService(t)
 	ctx := context.Background()
-	acctID, _, _, stolen, err := svc.Register(ctx, "Kyle", goodPW)
+	acctID, _, _, mine, err := svc.Register(ctx, "Kyle", goodPW)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	_, _, _, mine, err := svc.Login(ctx, "Kyle", goodPW)
-	if err != nil {
-		t.Fatalf("login: %v", err)
+	// A leftover cookie from before sole-session login. ChangePassword
+	// must still kill every token except the one it issues.
+	if err := mem.CreateSession(ctx, "stolen", acctID, time.Hour); err != nil {
+		t.Fatalf("inject: %v", err)
 	}
+	stolen := "stolen"
 	if got := mem.SessionCount(acctID); got != 2 {
 		t.Fatalf("expected 2 live sessions, got %d", got)
 	}
@@ -291,10 +336,10 @@ func TestAdminResetPasswordRevokesEverything(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	_, _, _, second, err := svc.Login(ctx, "Kyle", goodPW)
-	if err != nil {
-		t.Fatalf("login: %v", err)
+	if err := mem.CreateSession(ctx, "second", acctID, time.Hour); err != nil {
+		t.Fatalf("inject: %v", err)
 	}
+	second := "second"
 	if got := mem.SessionCount(acctID); got != 2 {
 		t.Fatalf("expected 2 sessions, got %d", got)
 	}

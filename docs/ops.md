@@ -65,8 +65,8 @@ Open the site and **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser d
 `client/index.html` pins the scripts:
 
 ```
-script src="app.js?v=p0-1"
-script src="pick-npc.js?v=p0-1"
+script src="app.js?v=p0-2"
+script src="pick-npc.js?v=p0-2"
 ```
 
 Bump that `?v=` whenever a client fix must land through a cache. The world also sends `Cache-Control: no-cache` on HTML/JS/CSS; the query string is the belt as well as the braces.
@@ -166,6 +166,7 @@ Facts worth knowing before an incident:
 
 - **Passwords** are stored only as scrypt hashes (`scrypt$N$r$p$salt$key`, N=16384, ~16 MiB per hash). The format carries its own parameters, so raising the cost later re-hashes each password on the owner's next login. There is no recovery path — no email on file means **a forgotten password cannot be reset**, only the row deleted.
 - **Sessions live in Redis** (`session:<token>`, plus `acct-sessions:<accountID>` for revocation), 7 days sliding. `redis-cli FLUSHALL` signs out the whole hamlet; it loses no packs.
+- **One live session per account.** A successful login (or an authenticated `/ws` join) revokes every other Redis token for that account and closes any other open socket with `code=replaced` / “Signed in somewhere else.” The old tab stops retrying; its cookie is already dead. The pack is whatever Postgres last agreed to — the kick does not mint items.
 - **Concurrent hashing is capped** at 4, so a login flood costs ~64 MiB rather than one 16 MiB allocation per request.
 - **One account owns exactly one player row**, enforced by a unique index on `players.account_id`.
 - Player rows created before accounts existed keep `account_id IS NULL` and are simply unreachable. To see them: `SELECT id, name FROM players WHERE account_id IS NULL;`
