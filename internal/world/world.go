@@ -23,6 +23,7 @@ const (
 	KindTin    = protocol.KindTin
 	KindKiln   = protocol.KindKiln
 	KindAnvil  = protocol.KindAnvil
+	KindChest  = protocol.KindChest
 
 	forageTicks = 2
 	millTicks   = 2
@@ -77,12 +78,15 @@ type Player struct {
 	ActionNode   string
 	ActionGround string
 	ActionTrader string
+	ActionChest  string
 	ActionItem   string
 	Inv          []ItemStack
+	Bank         []ItemStack
 	Skills       map[string]SkillState
 	HP           int
 	MaxHP        int
 	Coins        int
+	BankCoins    int
 	Looks        protocol.Looks
 	Target       string
 	LastChat     uint64
@@ -143,6 +147,7 @@ type World struct {
 	groundSeq int
 	notes     map[string]string
 	tradeOpen map[string]string
+	bankOpen  map[string]string
 	// rng rolls loot. The simulation itself stays deterministic — this is
 	// only ever consulted for drops, which no crash-recovery guarantee
 	// depends on. Owned by the World rather than global so a test can pin
@@ -235,12 +240,14 @@ func (w *World) UpsertPlayer(rec *PlayerRec, online bool) *Player {
 		Name:   SanitizeName(rec.Name),
 		X:      rec.X,
 		Y:      rec.Y,
-		Inv:    append([]ItemStack(nil), rec.Inv...),
-		Skills: rec.Skills,
-		HP:     hp,
-		MaxHP:  playerMaxHP,
-		Coins:  rec.Coins,
-		Looks:  rec.Looks,
+		Inv:       append([]ItemStack(nil), rec.Inv...),
+		Bank:      append([]ItemStack(nil), rec.Bank...),
+		Skills:    rec.Skills,
+		HP:        hp,
+		MaxHP:     playerMaxHP,
+		Coins:     rec.Coins,
+		BankCoins: rec.BankCoins,
+		Looks:     rec.Looks,
 		Online: online,
 	}
 	if !w.Walkable(p.X, p.Y) {
@@ -354,6 +361,11 @@ func (w *World) SetInteract(id, nodeID string) {
 	if p == nil || n == nil {
 		return
 	}
+	if n.Kind == KindChest {
+		w.SetChest(id, nodeID)
+		return
+	}
+	p.ActionChest = ""
 	tx, ty, ok := w.nearestAdjacent(p.X, p.Y, n.X, n.Y)
 	if !ok {
 		return
@@ -431,6 +443,7 @@ func (w *World) Tick(ctx context.Context) {
 		w.tickAction(ctx, p)
 		w.tickPickup(ctx, p)
 		w.tickTrade(p)
+		w.tickChest(p)
 		if w.TickN%10 == 0 && p.Dirty {
 			_ = w.Store.SavePlayer(ctx, recFromPlayer(p))
 			p.Dirty = false
@@ -976,12 +989,14 @@ func (w *World) youView(p *Player) protocol.YouView {
 			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
 			Looks: looksView(p.Looks),
 		},
-		Inv:    inv,
-		Skills: sk,
-		HP:     p.HP,
-		MaxHP:  p.MaxHP,
-		Coins:  p.Coins,
-		Target: p.Target,
+		Inv:       inv,
+		Skills:    sk,
+		HP:        p.HP,
+		MaxHP:     p.MaxHP,
+		Coins:     p.Coins,
+		Bank:      bankView(p.Bank),
+		BankCoins: p.BankCoins,
+		Target:    p.Target,
 	}
 }
 
@@ -1023,7 +1038,7 @@ func nodeReady(n *Node) bool {
 	if n == nil {
 		return false
 	}
-	if n.Kind == KindFire || n.Kind == KindMill || n.Kind == KindKiln || n.Kind == KindAnvil {
+	if n.Kind == KindFire || n.Kind == KindMill || n.Kind == KindKiln || n.Kind == KindAnvil || n.Kind == KindChest {
 		return true
 	}
 	return n.Remaining > 0 && n.Cooldown == 0
@@ -1138,9 +1153,13 @@ func bestWeapon(inv []ItemStack) (attack, damage int) {
 // stack — two axes are two axes, in two slots, so a pack of tools costs
 // you the room it looks like it costs.
 func addItem(inv []ItemStack, id string, n int) []ItemStack {
+	return addItemCapped(inv, id, n, protocol.InvSlots)
+}
+
+func addItemCapped(inv []ItemStack, id string, n, cap int) []ItemStack {
 	if protocol.IsTool(id) {
 		for i := 0; i < n; i++ {
-			if len(inv) >= protocol.InvSlots {
+			if len(inv) >= cap {
 				return inv
 			}
 			inv = append(inv, ItemStack{ID: id, N: 1})
@@ -1156,7 +1175,7 @@ func addItem(inv []ItemStack, id string, n int) []ItemStack {
 			return inv
 		}
 	}
-	if len(inv) >= protocol.InvSlots {
+	if len(inv) >= cap {
 		return inv
 	}
 	return append(inv, ItemStack{ID: id, N: n})
@@ -1197,5 +1216,6 @@ func cancelAction(p *Player) {
 	p.ActionNode = ""
 	p.ActionGround = ""
 	p.ActionTrader = ""
+	p.ActionChest = ""
 	p.ActionItem = ""
 }

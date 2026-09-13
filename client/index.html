@@ -25,8 +25,8 @@
           <div class="bevel">
             <canvas id="stage" width="1200" height="960"></canvas>
           </div>
-          <p id="crumbs">Wend sells a quarry pick · South of the stile, fight · East, the scars</p>
-          <p id="hint">Walk the grass. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
+          <p id="crumbs">Oak chest by the stile · Wend sells a quarry pick · South, fight · East, the scars</p>
+          <p id="hint">Walk the grass. The <em>oak chest</em> by the stile holds what will not fit in the pack. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
         </div>
         <aside id="panels">
           <section class="panel">
@@ -55,6 +55,7 @@
               <li>Click the <em>sack</em> it leaves behind to gather what fell</li>
               <li>Chop a <em>tree</em> for logs — pulp one at the millstone for <em>paper</em></li>
               <li>Drop a log and <em>right-click</em> it to light a fire you can cook at</li>
+              <li>Click the <em>oak chest</em> by the stile to leave overflow — pack stays limited, the chest remembers</li>
               <li>Click <em>Wend the Pedlar</em> by the millstone to sell what you gather — she stocks a <em>quarry pick</em></li>
               <li>Walk <em>east</em> into the scars, mine <em>copper</em> and <em>tin</em>, smelt a <em>bronze bar</em> at the kiln, forge a <em>bronze knife</em> at the anvil</li>
             </ol>
@@ -117,6 +118,42 @@
     </div>
   </div>
 
+  <div id="chest" class="overlay hidden">
+    <div class="scroll chestscroll">
+      <p class="seal">Hollowmere</p>
+      <h1 id="chest-who">The oak chest</h1>
+      <p class="tag">Yours alone. Click a thing to move it. Coins never take a slot.</p>
+      <div class="chest-purses">
+        <div>
+          <p class="purse">Purse: <strong id="chest-purse">0 coins</strong></p>
+          <div class="chest-coinbtns">
+            <button type="button" class="shoprow" data-bank="deposit" data-id="coins" data-n="1">Leave 1</button>
+            <button type="button" class="shoprow" data-bank="deposit" data-id="coins" data-n="all">Leave all</button>
+          </div>
+        </div>
+        <div>
+          <p class="purse">In the chest: <strong id="chest-bankpurse">0 coins</strong></p>
+          <div class="chest-coinbtns">
+            <button type="button" class="shoprow" data-bank="withdraw" data-id="coins" data-n="1">Take 1</button>
+            <button type="button" class="shoprow" data-bank="withdraw" data-id="coins" data-n="all">Take all</button>
+          </div>
+        </div>
+      </div>
+      <div class="shopcols">
+        <section>
+          <h2>Pack</h2>
+          <div id="chest-pack" class="slots"></div>
+        </section>
+        <section>
+          <h2>Chest <span id="chest-used" class="sub"></span></h2>
+          <div id="chest-slots" class="slots"></div>
+        </section>
+      </div>
+      <p id="chest-msg" class="authmsg" role="status" aria-live="polite"></p>
+      <button id="chest-close" type="button">Close the lid</button>
+    </div>
+  </div>
+
   <div id="looks" class="overlay hidden">
     <div class="scroll looksscroll">
       <p class="seal">Hollowmere</p>
@@ -129,7 +166,7 @@
         </div>
         <form id="form-looks" class="looks-axes">
           <div id="looks-pickers"></div>
-          <p class="crumbs">Wend sells a quarry pick. South of the stile, fight. East, the scars.</p>
+          <p class="crumbs">Oak chest by the stile. Wend sells a quarry pick. South, fight. East, the scars.</p>
           <button id="do-looks" type="submit">Step onto the stile</button>
         </form>
       </div>
@@ -182,7 +219,7 @@
     </div>
   </div>
 
-  <script src="pick-npc.js?v=p1-looks"></script>
-  <script src="app.js?v=p1-looks"></script>
+  <script src="pick-npc.js?v=p2-bank"></script>
+  <script src="app.js?v=p2-bank"></script>
 </body>
 </html>

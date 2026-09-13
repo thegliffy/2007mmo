@@ -27,6 +27,10 @@ type PlayerRec struct {
 	HP *int
 	// Coins live outside Inv on purpose: a purse costs no pack slot.
 	Coins int
+	// Bank is the personal chest. Same stack rules as the pack, smaller
+	// cap. BankCoins is the overflow purse — coins never take a slot.
+	Bank      []ItemStack
+	BankCoins int
 	// Looks is empty until the creator writes it. Relog must keep it.
 	Looks protocol.Looks
 }
@@ -46,8 +50,10 @@ func recFromPlayer(p *Player) *PlayerRec {
 		sk[k] = v
 	}
 	hp := p.HP
+	bank := append([]ItemStack(nil), p.Bank...)
 	return &PlayerRec{ID: p.ID, Name: p.Name, X: p.X, Y: p.Y,
-		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins, Looks: p.Looks}
+		Inv: inv, Skills: sk, HP: &hp, Coins: p.Coins,
+		Bank: bank, BankCoins: p.BankCoins, Looks: p.Looks}
 }
 
 func recFromNode(n *Node) *NodeRec {

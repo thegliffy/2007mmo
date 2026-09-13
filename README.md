@@ -8,7 +8,7 @@ Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” 
 
 by **thegliffy**
 
-**Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). Bank is not in this cut.
+**Kyle / P0 ops:** backup, restore drill, deploy, rollback, and how to scrape `/stats` on the live Caddy box are in **[docs/ops.md](docs/ops.md)** (checklist at the top). The oak chest (personal bank) is in this cut.
 
 ## Accounts and login
 
@@ -35,7 +35,7 @@ This tree keeps Week 1 (woodland loop, wood HUD, ops honesty) and adds the next 
 3. **Combat v0.** Tick-authoritative **1vNPC**. Click **near** a beast (Chebyshev ≤ 1 of the clicked tile) or send `attack` — you walk adjacent, then both sides swing once per 600ms tick. Heart and target HP show on the parchment HUD and over the sprites. A Thornkin is a win; the Brambleback can drop you.
 4. **Soft defeat.** HP to 0 wakes you at the stile with an empty threat and the same pack. Fallen beasts respawn in the clearing after a short wait. Hearth tarts and roast hazel mend a little heart.
 
-**Out of scope (still):** PvP, multi-target, recustomize NPC / cosmetics shop, full paperdoll equipment, skill sprawl, market, multi-world, Kubernetes.
+**Out of scope (still):** PvP, multi-target, recustomize NPC / cosmetics shop, full paperdoll equipment, skill sprawl, market, player trade, GE, multi-world, Kubernetes.
 
 ## Phase 2 Week 1
 
@@ -90,6 +90,24 @@ held-tool path is a way of being deliberate rather than the only way through.
 
 The server checks the tool independently of all this. Holding the flint is a
 convenience of the client; **having it is a rule of the world**.
+
+### The oak chest
+
+An **oak chest** sits on the grass immediately west of the stile (tile
+`(7,8)`). Click it to walk over and open the lid. The pack is still 28
+slots; the chest is **20** — overflow that stays put when you close the
+tab.
+
+Coins never take a slot here either. Leave them in the chest purse, or
+take them back into the one you carry.
+
+The chest is **yours alone**. Standing at the same lid as someone else
+opens your chest, not theirs. There is no shared stash and no Grand
+Exchange.
+
+A deposit or withdraw writes pack, purse, chest, and chest-purse
+together, **Postgres first**. A crash or a double-click cannot mint a
+second berry. Walking to the chest with the socket down never opens it.
 
 ### The pedlar
 
@@ -319,14 +337,14 @@ From the checkout that serves **2007.gliffy.tv** (or any `docker compose up` sta
 ./scripts/pg-restore.sh backups/hollowmere-YYYYMMDDThhmmssZ.sql.gz   # real rewind; stops world
 ```
 
-The dump is accounts, packs (including metal), coins, and node remaining. Loot piles are memory-only and do not survive a restore. Details, deploy, rollback, live scrape: **[docs/ops.md](docs/ops.md)**.
+The dump is accounts, packs (including metal), coins, the personal chest (`bank` / `bank_coins`), and node remaining. Loot piles are memory-only and do not survive a restore. Details, deploy, rollback, live scrape: **[docs/ops.md](docs/ops.md)**.
 
 ## What this PoC proves
 
 1. A browser loads, **registers or logs in** (name + password, scrypt-hashed, HttpOnly session cookie), and joins **one world** over an authenticated WebSocket. Compose also terminates **WSS** on `:8443` (self-signed).
 2. An authoritative **~600ms** tick loop runs in **Docker Compose** next to **Postgres** (canonical state) and **Redis** (session / presence).
 3. Click-to-move (WASD optional) on a **40×32** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet and the scars).
-4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). **Mining** → kiln → anvil. The pack **persists across logout**.
+4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). **Mining** → kiln → anvil. The pack **and the oak chest persist across logout**.
 5. **1vNPC combat** on the tick: click-to-attack, HP feedback, soft respawn at the stile.
 6. A **headless bot harness** (`cmd/bots`) opens real WS clients — not browsers — for load.
 
@@ -340,7 +358,7 @@ docker compose up --build
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p0-2` and `pick-npc.js?v=p0-2` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=p2-bank` and `pick-npc.js?v=p2-bank` — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 **Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
@@ -396,6 +414,7 @@ go run ./cmd/world
 - **Log in:** register at the stile, then the cookie walks you straight back in next visit.
 - **Move:** click a walkable tile; the server pathfinds and steps **one tile per tick**.
 - **Fight:** Melee trains on damage dealt, Defense on blows taken. Both change the numbers, not just the score.
+- **Chest:** click the oak chest by the stile. Leave items or coins; they persist in Postgres. A peer at the same lid sees their own chest.
 - **Forage:** bramble → brambleberry; hazel → hazel nut.
 - **Mine:** walk east into the scars; copper + tin with a quarry pick.
 - **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut. The kiln smelts copper and tin into a bronze bar; the anvil forges the bar into a knife.
@@ -432,7 +451,7 @@ Measured on the PoC box (Go world + Compose Postgres/Redis). Re-run after `docke
 | **B2** | Stable WS ~30 min + reconnect | Leave a tab open; drop the socket | **PASS (reconnect)** — the client retries and the session cookie re-authenticates the upgrade; a dead session or a taken-over tab stops retrying. **30‑min soak is not CI-gated.** Live flaps: see ops.md “Known issue”. |
 | **T1** | Empty-world tick p99 ≲ 50ms | `curl localhost:8080/stats` after ~30s with 0–1 players | **PASS** — empty tick p99 **0.016ms**, loop p99 **0.017ms**, lag p99 **0.81ms** |
 | **T2** | 200 bots in a hotspot: the loop fits inside the tick with margin, no WS collapse | `npm run bots:hotspot` | **PASS** — 200/200 joined, **loop p99 205.5ms of the 600ms budget (34%)**, **lag p99 1.0ms**, **0 frames dropped**, 0 sockets lost. Measured 2026-09-13 on a Ryzen 9 5900X. |
-| **T3** | Kill world mid-session — **no item dupe** | Gather / smelt / forge / loot / pedlar → crash or double-click | **PASS** — `internal/world/nodupe_test.go` plus the older forage/mill crash tests and `scripts/nodupe-chaos.py` |
+| **T3** | Kill world mid-session — **no item dupe** | Gather / smelt / forge / loot / pedlar / chest → crash or double-click | **PASS** — `internal/world/nodupe_test.go` plus bank/chest cases, forage/mill crash tests, and `scripts/nodupe-chaos.py` |
 | **T4** | `docker compose up` brings the stack; a browser can connect | `docker compose up --build` → open `:8080` | **PASS on a normal Docker Engine.** This agent VM’s Docker bridge drops inter-container packets (world cannot dial `postgres:5432` inside the compose network). Postgres + Redis still come up healthy on published ports; the Week 1 loop was played with `go run ./cmd/world` against those ports, plus `scripts/week1-loop.py` and a browser pass. |
 
 **Read `lagP99Ms`, not `tickP99Ms`.** Lag is how late a tick fired against its
@@ -462,7 +481,7 @@ budget, then goes over all at once. Fixing it means moving player saves off the
 tick, which is deliberately not done — see the T3 rule below, which is the
 property that makes it delicate.
 
-T3 rule: gather / mill / cook / eat / mine / smelt / forge **write Postgres first**, then update memory. A crash mid-tick loses an in-flight channel, never clones an item.
+T3 rule: gather / mill / cook / eat / mine / smelt / forge / pedlar / **chest** **write Postgres first**, then update memory. A crash mid-tick loses an in-flight channel or a refused move, never clones an item.
 
 ## Layout
 
@@ -487,7 +506,7 @@ One container ≈ one world. Grow later by running another compose project, not 
 
 ## Out of scope (on purpose)
 
-Full skill tree, market, quests, PvP, multi-target combat, multi-world routing, 1k CCU claims, mobile polish, Agones/K8s, borrowed studio content.
+Full skill tree, market, player trade, GE, quests, PvP, multi-target combat, multi-world routing, 1k CCU claims, mobile polish, Agones/K8s, borrowed studio content.
 
 On the auth side specifically: no email, so no *self-service* password reset (operator reset only, ops.md A6); no 2FA; no account deletion from the UI; one character per account; and sessions are Redis-only, so a Redis flush logs everyone out.
 

@@ -60,6 +60,7 @@ live_sql() {
 echo "live schema=$(live_sql 'SELECT COALESCE(max(version),0) FROM schema_migrations')"
 echo "live accounts=$(live_sql 'SELECT count(*) FROM accounts') players=$(live_sql 'SELECT count(*) FROM players') nodes=$(live_sql 'SELECT count(*) FROM nodes')"
 echo "live coins=$(live_sql 'SELECT COALESCE(sum(coins),0) FROM players')"
+echo "live bank_coins=$(live_sql "SELECT COALESCE(sum(bank_coins),0) FROM players" 2>/dev/null || echo 0)"
 echo "live node kinds:"
 live_sql "SELECT kind || '=' || count(*) FROM nodes GROUP BY kind ORDER BY 1"
 
@@ -67,6 +68,7 @@ LIVE_ACCOUNTS="$(live_sql 'SELECT count(*) FROM accounts')"
 LIVE_PLAYERS="$(live_sql 'SELECT count(*) FROM players')"
 LIVE_NODES="$(live_sql 'SELECT count(*) FROM nodes')"
 LIVE_COINS="$(live_sql 'SELECT COALESCE(sum(coins),0) FROM players')"
+LIVE_BANK_COINS="$(live_sql "SELECT COALESCE(sum(bank_coins),0) FROM players" 2>/dev/null || true)"
 LIVE_SCHEMA="$(live_sql 'SELECT COALESCE(max(version),0) FROM schema_migrations')"
 LIVE_KINDS="$(live_sql "SELECT kind || '=' || count(*) FROM nodes GROUP BY kind ORDER BY 1")"
 LIVE_METAL="$(live_sql "SELECT count(*) FROM nodes WHERE kind IN ('copper','tin','kiln','anvil')")"
@@ -110,6 +112,7 @@ DRILL_ACCOUNTS="$(drill_sql 'SELECT count(*) FROM accounts')"
 DRILL_PLAYERS="$(drill_sql 'SELECT count(*) FROM players')"
 DRILL_NODES="$(drill_sql 'SELECT count(*) FROM nodes')"
 DRILL_COINS="$(drill_sql 'SELECT COALESCE(sum(coins),0) FROM players')"
+DRILL_BANK_COINS="$(drill_sql "SELECT COALESCE(sum(bank_coins),0) FROM players" 2>/dev/null || true)"
 DRILL_SCHEMA="$(drill_sql 'SELECT COALESCE(max(version),0) FROM schema_migrations')"
 DRILL_KINDS="$(drill_sql "SELECT kind || '=' || count(*) FROM nodes GROUP BY kind ORDER BY 1")"
 DRILL_METAL="$(drill_sql "SELECT count(*) FROM nodes WHERE kind IN ('copper','tin','kiln','anvil')")"
@@ -130,6 +133,9 @@ check accounts "$LIVE_ACCOUNTS" "$DRILL_ACCOUNTS"
 check players "$LIVE_PLAYERS" "$DRILL_PLAYERS"
 check nodes "$LIVE_NODES" "$DRILL_NODES"
 check coins "$LIVE_COINS" "$DRILL_COINS"
+if [ -n "${LIVE_BANK_COINS:-}" ] && [ -n "${DRILL_BANK_COINS:-}" ]; then
+  check bank_coins "$LIVE_BANK_COINS" "$DRILL_BANK_COINS"
+fi
 check schema "$LIVE_SCHEMA" "$DRILL_SCHEMA"
 check kinds "$LIVE_KINDS" "$DRILL_KINDS"
 check metal_nodes "$LIVE_METAL" "$DRILL_METAL"
@@ -145,7 +151,7 @@ if [ "${LIVE_METAL:-0}" -lt 1 ]; then
   echo "eastern-scars deploy has been up once, this should be several veins." >&2
 fi
 
-echo "DRILL PASS — dump $DUMP restores accounts, packs, coins, and node kinds."
+echo "DRILL PASS — dump $DUMP restores accounts, packs, coins, chest purses, and node kinds."
 echo "Live rollback (downtime) is: ./scripts/pg-restore.sh $DUMP --yes"
 echo "On the live host, if /health is not on :8080:"
 echo "  HEALTH_URL=http://127.0.0.1:28080/health ./scripts/pg-restore.sh $DUMP --yes"
