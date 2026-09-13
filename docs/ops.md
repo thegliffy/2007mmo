@@ -148,7 +148,7 @@ docker compose exec postgres psql -U hollowmere -d hollowmere \
 
 | URL | What |
 |-----|------|
-| `/health` | world + postgres + redis ping |
+| `/health` | world + postgres + redis ping — the only one served publicly |
 | `/stats` | JSON: tick/loop/lag p50/p99, online, WS, joins, chats, actions, dropped frames, rate-limit counters, auth counters |
 | `/metrics` | Prometheus text of the same numbers |
 
@@ -156,6 +156,18 @@ docker compose exec postgres psql -U hollowmere -d hollowmere \
 npm run stats
 curl -s http://127.0.0.1:8080/metrics
 ```
+
+On the live host `/stats` and `/metrics` are **404 at the edge** — Caddy refuses
+them so the `loginFails` and `limitedLogin` counters cannot tell someone
+guessing passwords whether the throttle is biting. Read them on the box,
+straight past Caddy:
+
+```bash
+curl -s http://127.0.0.1:28080/stats
+```
+
+The matcher lives in `deploy/caddy/Caddyfile.snippet`; `/health` stays public
+because it is only a boolean.
 
 Rate limits (defaults are generous enough for local bots; tighten on the live host):
 
