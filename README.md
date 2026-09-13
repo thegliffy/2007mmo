@@ -8,6 +8,21 @@ Original Hollowmere IP. No borrowed studio chrome, place names, or “-Scape” 
 
 by **thegliffy**
 
+## Accounts and login
+
+Hollowmere now has a **real front door**. There is no anonymous entry.
+
+1. **Register or log in** at the stile: a name (3–16 characters, letters/digits/`_`/`-`) and a password (10+ characters). Passwords are stored only as **scrypt** hashes.
+2. **The session is an HttpOnly cookie.** No script on the page can read it, so an XSS or a hostile link cannot carry your login away. Nothing identity-shaped lives in `localStorage` any more.
+3. **The WebSocket is authenticated before it opens.** `/ws` refuses to upgrade without a valid session, and the join frame carries **no** identity — so a client can no longer name a player id and be believed.
+4. **Peers see an opaque handle**, not your player id. The handle is fresh every time you walk in, so nobody can follow you across sessions by remembering it.
+5. **Change your password** from the Account panel. Doing so signs out every other session and closes its socket.
+6. **Cross-site requests are refused**: the WebSocket checks `Origin`, and the auth endpoints require a same-origin JSON post.
+
+One account owns one character. There is no password reset — no email is collected, so a lost password means a deleted row (see **[docs/ops.md](docs/ops.md)** A4).
+
+Login attempts are throttled per address *and* per account name. Behind a proxy you **must** set `HOLLOWMERE_TRUSTED_PROXIES`, or every player shares one budget — ops.md A4 covers it.
+
 ## Phase 2 Week 2
 
 This tree keeps Week 1 (woodland loop, wood HUD, ops honesty) and adds the next Kyle ask: a **bigger hamlet map** and **southern combat**.
@@ -61,7 +76,7 @@ Details, deploy, rollback, and live rate-limit knobs: **[docs/ops.md](docs/ops.m
 
 ## What this PoC proves
 
-1. A browser loads, stubs auth (display name + `localStorage` id), and joins **one world** over WebSocket. Compose also terminates **WSS** on `:8443` (self-signed).
+1. A browser loads, **registers or logs in** (name + password, scrypt-hashed, HttpOnly session cookie), and joins **one world** over an authenticated WebSocket. Compose also terminates **WSS** on `:8443` (self-signed).
 2. An authoritative **~600ms** tick loop runs in **Docker Compose** next to **Postgres** (canonical state) and **Redis** (session / presence).
 3. Click-to-move (WASD optional) on a **28×32** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet).
 4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). The pack **persists across logout**.
@@ -76,9 +91,11 @@ It does **not** claim 1k CCU, a skill tree, a market, quests, PvP, or multiple w
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. Enter names. Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click **near** a Thornkin to fight. Type in the parchment log.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk south and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=click-near-2` and `pick-npc.js?v=click-near-2` so a stale Week 2 `app.js` does not keep exact-tile clicks.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=auth-1` and `pick-npc.js?v=auth-1` so a stale pre-auth `app.js` does not keep sending the old join frame.
+
+**Before the auth deploy goes live**, set `HOLLOWMERE_TRUSTED_PROXIES`, `HOLLOWMERE_ALLOWED_ORIGINS`, `HOLLOWMERE_SECURE_COOKIES=1`, and the tight login limits — [docs/ops.md](docs/ops.md) A4.
 
 Headless stand-in for two tabs (needs `pip install websockets`):
 
@@ -87,6 +104,8 @@ python3 scripts/smoke.py
 python3 scripts/week1-loop.py   # berry → mill → tart, hazel → roast, persist
 python3 scripts/south-fight.py  # walk-equivalent: attack a Thornkin to the bracken
 ```
+
+Each script registers its own throwaway account on first run (`scripts/hollow_auth.py`) and logs in on later runs. They are for a local stack — do not point them at the live host.
 
 | Port | What |
 |------|------|
@@ -101,12 +120,14 @@ Useful URLs: `/health`, `/stats`, `/metrics`.
 npm start          # same as docker compose up --build
 npm run stats
 npm run metrics
-npm test           # Go unit tests (tick, gather, mill, roast, combat, no-dupe recovery)
+npm test           # Go unit tests (tick, gather, mill, roast, combat, no-dupe recovery, auth)
 npm run backup     # dump Compose Postgres
 npm run drill      # safe restore drill (throwaway container)
 ```
 
 ### WSS note
+
+Run the live host over **HTTPS**. The session cookie is only marked `Secure` when the world sees TLS (or `HOLLOWMERE_SECURE_COOKIES=1`), and a login sent over plain http:// is a password in clear.
 
 The join protocol is WebSocket. Production shape is **WSS**. Compose listens on `8443` with an ephemeral self-signed cert; browsers will complain until you accept it. Day-to-day local play uses `http://127.0.0.1:8080` + `ws://` on the same origin so two tabs just work.
 
@@ -122,7 +143,8 @@ go run ./cmd/world
 
 ## Vertical slice (how to poke it)
 
-- **Identity:** name + UUID in `localStorage`. No passwords, no accounts table beyond the player row.
+- **Identity:** account name + password. The session is an HttpOnly cookie; the player id never reaches the browser, and peers only ever see a rotating handle.
+- **Log in:** register at the stile, then the cookie walks you straight back in next visit.
 - **Move:** click a walkable tile; the server pathfinds and steps **one tile per tick**.
 - **Forage:** bramble → brambleberry; hazel → hazel nut.
 - **Process:** millstone crushes a berry into pulp; the hearth bakes pulp or roasts a nut.
@@ -130,11 +152,13 @@ go run ./cmd/world
 - **Fight:** click near a southern hostile (neighbor tile is enough); one swing each per tick while adjacent.
 - **Death:** wake at the stile with full heart and the same pack.
 - **Chat:** public, one line per tick, plus a short token-bucket cap.
-- **Logout:** close the tab. Re-enter with the same browser; the pack is still there.
+- **Logout:** the Account panel signs you out and closes the socket. Closing the tab just drops the socket; the cookie still lets you back in.
 
 ## Bot harness
 
 Headless WS clients, not real browsers:
+
+Bots hold real accounts (`bot000`…), registering on first run and logging in afterwards. A load run therefore needs a generous login budget — Compose sets one; the live values in ops.md are far tighter.
 
 ```bash
 # against a running world
@@ -154,9 +178,10 @@ Measured on the PoC box (Go world + Compose Postgres/Redis). Re-run after `docke
 | Gate | Target | How to check | Status |
 |------|--------|----------------|--------|
 | **B1** | Cold load to in-world ≲ 10s on a mid laptop | Hard-refresh `/`, enter a name | **PASS** — static `index.html` + `styles.css` + `app.js`, no engine download |
-| **B2** | Stable WS ~30 min + reconnect | Leave a tab open; drop the socket | **PASS (reconnect)** — client retries with stored id/session; same `playerId` gets `welcome` again. **30‑min soak is not CI-gated** |
+| **B2** | Stable WS ~30 min + reconnect | Leave a tab open; drop the socket | **PASS (reconnect)** — the client retries and the session cookie re-authenticates the upgrade; a dead session shows the portal instead of looping. **30‑min soak is not CI-gated** |
 | **T1** | Empty-world tick p99 ≲ 50ms | `curl localhost:8080/stats` after ~30s with 0–1 players | **PASS** — empty p99 **0.009ms**; after a short play session p99 **3.1ms** |
-| **T2** | ~200 bots in a hotspot: tick p99 ≲ 150ms, no WS collapse | `npm run bots:hotspot` | **PASS** — 200/200 connected, **0 drops**, tick p99 **76.7ms** |
+| **T1b** | Tick **lag** p99 well under the 600ms interval | same `/stats`, read `lagP99Ms` | the honest "is it keeping up" number — `tickP99Ms` excludes the state fan-out |
+| **T2** | ~200 bots in a hotspot: tick p99 ≲ 150ms, no WS collapse | `npm run bots:hotspot` | **Needs re-measuring.** The old figure (200/200, 0 drops, tick p99 76.7ms) predates three things: `tickP99Ms` excluded the state fan-out, "0 drops" counted only lost sockets and not discarded frames, and the per-IP hello budget (burst 40) cannot admit 200 bots from one address without the retry the harness now does. Re-run and record `loopP99Ms`, `lagP99Ms` and `framesDropped`. |
 | **T3** | Kill world mid-session — **no item dupe** | Gather → kill world → start world → reconnect same id | **PASS** — unit tests `TestCrashRecoveryNoItemDupe` + `TestCrashRecoveryNoPulpDupe` + `scripts/t3-world-kill.sh` |
 | **T4** | `docker compose up` brings the stack; a browser can connect | `docker compose up --build` → open `:8080` | **PASS on a normal Docker Engine.** This agent VM’s Docker bridge drops inter-container packets (world cannot dial `postgres:5432` inside the compose network). Postgres + Redis still come up healthy on published ports; the Week 1 loop was played with `go run ./cmd/world` against those ports, plus `scripts/week1-loop.py` and a browser pass. |
 
@@ -165,16 +190,17 @@ T3 rule: gather / mill / cook / eat **write Postgres first**, then update memory
 ## Layout
 
 ```
-cmd/world          authoritative world + HTTP/WS/WSS
+cmd/world          authoritative world + HTTP/WS/WSS + auth endpoints
 cmd/bots           headless load harness
 internal/world     tick, map, path, woodland work, pack, combat v0
-internal/store     Postgres (canonical) + Redis (session/presence)
-internal/hub       WebSocket join / broadcast / limits / metrics
+internal/store     Postgres (accounts + packs) + Redis (sessions/presence)
+internal/auth      accounts, scrypt passwords, session issue/revoke
+internal/hub       WebSocket join / broadcast / limits / metrics / auth HTTP
 internal/protocol  shared JSON frames
 client/            carved wood + parchment HUD + canvas hamlet
 docs/ops.md        deploy, rollback, backup/restore, live limits
 migrations/        optional init SQL (server also auto-migrates)
-scripts/           smoke, T3 helpers, south-fight, pick-npc-test, pg backup / restore / drill
+scripts/           smoke, T3 helpers, south-fight, pick-npc-test, login helper, pg backup / restore / drill
 docker-compose.yml world + postgres + redis
 ```
 
@@ -183,6 +209,8 @@ One container ≈ one world. Grow later by running another compose project, not 
 ## Out of scope (on purpose)
 
 Full skill tree, market, quests, PvP, multi-target combat, multi-world routing, 1k CCU claims, mobile polish, Agones/K8s, borrowed studio content.
+
+On the auth side specifically: no email, so **no password reset**; no 2FA; no account deletion from the UI; one character per account; and sessions are Redis-only, so a Redis flush logs everyone out.
 
 ## Credit
 

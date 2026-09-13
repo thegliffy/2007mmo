@@ -31,3 +31,7 @@ vendor/
 /backups/*.sql
 /backups/*.sql.gz
 /backups/*.dump
+
+# python bytecode from the smoke scripts
+__pycache__/
+*.pyc

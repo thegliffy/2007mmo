@@ -7,8 +7,11 @@ services:
       POSTGRES_USER: hollowmere
       POSTGRES_PASSWORD: hollowmere
       POSTGRES_DB: hollowmere
+    # Loopback only. The world reaches Postgres over the compose network;
+    # publishing on 0.0.0.0 put a hollowmere/hollowmere database on the
+    # internet of whatever host this runs on.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
@@ -21,8 +24,9 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Loopback only: Redis has no password and now holds login sessions.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -52,6 +56,19 @@ services:
       HOLLOWMERE_LIMIT_WS_BURST: "32"
       HOLLOWMERE_LIMIT_CHAT_RATE: "0.8"
       HOLLOWMERE_LIMIT_CHAT_BURST: "4"
+      # Login budget. Generous here so the 200-bot harness can sign in;
+      # docs/ops.md A5 has the far tighter live values.
+      HOLLOWMERE_LIMIT_LOGIN_RATE: "60"
+      HOLLOWMERE_LIMIT_LOGIN_BURST: "400"
+      HOLLOWMERE_LIMIT_LOGIN_USER_RATE: "10"
+      HOLLOWMERE_LIMIT_LOGIN_USER_BURST: "20"
+      # Reverse-proxy trust. Unset here because nothing fronts the local
+      # stack; on 2007.gliffy.tv Caddy does, and all three are required —
+      # see docs/ops.md A4. Without TRUSTED_PROXIES every player shares one
+      # login budget AND the session cookie never gets Secure.
+      #   HOLLOWMERE_TRUSTED_PROXIES: "172.16.2.1/32,127.0.0.1/32"  # compose bridge gateway
+      #   HOLLOWMERE_ALLOWED_ORIGINS: "2007.gliffy.tv"
+      #   HOLLOWMERE_SECURE_COOKIES: "1"
     depends_on:
       postgres:
         condition: service_healthy
