@@ -107,6 +107,38 @@
     return S.blit(ctx, key, d.x, d.y, d.w, d.h);
   }
 
+  // Cottage 2×2 plate with the hearth cell punched out so the fire
+  // plate stays visible (and not painted onto the thatch).
+  function blitCottage(ctx, key, cam) {
+    const I = iso();
+    const S = spr();
+    const H = I.HOUSE;
+    const im = S && S.ready(key);
+    if (!im) return false;
+    const pts = I.footprintDiamond(H.x, H.y, H.w, H.h, cam);
+    const d = S.destAtGroundDiamond(
+      pts[3].x, pts[0].y, I.TW * H.w, I.TH * H.h,
+      im.naturalWidth, im.naturalHeight,
+      S.boundsOf(key, im.naturalWidth, im.naturalHeight)
+    );
+    const hole = I.diamond(H.idX, H.idY, cam);
+    const up = I.TH * 5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(d.x - 2, d.y - 2, d.w + 4, d.h + 4);
+    ctx.moveTo(hole[0].x, hole[0].y - up);
+    ctx.lineTo(hole[1].x, hole[1].y - up);
+    ctx.lineTo(hole[1].x, hole[1].y + 4);
+    ctx.lineTo(hole[2].x, hole[2].y + 4);
+    ctx.lineTo(hole[3].x, hole[3].y + 4);
+    ctx.lineTo(hole[3].x, hole[3].y - up);
+    ctx.closePath();
+    ctx.clip("evenodd");
+    const ok = S.blit(ctx, key, d.x, d.y, d.w, d.h);
+    ctx.restore();
+    return ok;
+  }
+
   function raiseWall(ctx, tx, ty, cam) {
     const I = iso();
     const h = 28;
@@ -466,8 +498,10 @@
       }
       if (s.kind === "house") {
         const H = I.HOUSE;
-        if (!(blitPlate(ctx, "buildings/house", H.x, H.y, cam, H.w, H.h) ||
-              blitPlate(ctx, "props/house", H.x, H.y, cam, H.w, H.h))) {
+        // Punch the hearth cell out of the plate so fire-1 can draw
+        // into that diamond instead of sitting on the thatch.
+        if (!(blitCottage(ctx, "buildings/house", cam) ||
+              blitCottage(ctx, "props/house", cam))) {
           const south = I.toScreen(H.x + H.w, H.y + H.h, cam);
           ctx.fillStyle = "#6b4423";
           ctx.fillRect(south.x - 40, south.y - 70, 80, 54);
@@ -540,10 +574,8 @@
         const key = S && S.nodeKey(n);
         // Map glyph T already drew the ready tree or the stump.
         if (n.kind === "tree") continue;
-        // fire-1 is the hearth inside the 2×2 cottage. Drawing the
-        // plate here parks the flames on the thatch; the house hit
-        // still reports (4, 5) so cooking clicks keep working.
-        if (n.id === "fire-1") continue;
+        // fire-1 (hearth) draws into the cottage's punched SE cell —
+        // house blitCottage leaves that diamond open.
         const drew = key && blitPlate(ctx, key, n.x, n.y, cam);
         if (!drew) {
           if (n.kind === "bush") {

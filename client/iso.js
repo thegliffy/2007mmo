@@ -25,7 +25,9 @@
 //     is the walking diamond — it is scaled onto this cell's diamond.
 //   • The cottage is a 2×2 plate. NW tile is the first H (3, 4);
 //     the hearth at (4, 5) is the SE cell. Same diamond rule on the
-//     2×2 cluster (width 2·TW, height 2·TH).
+//     2×2 cluster (width 2·TW, height 2·TH). The house plate is
+//     punched open over that SE cell so the hearth stays visible;
+//     clicks on the remaining roof still report (4, 5).
 //
 // Camera offsets are snapped to integer pixels so tiles and plates
 // cannot drift a half-pixel apart while the chase eases.
@@ -34,7 +36,8 @@
   const TH = 48;
 
   // Cottage 2×2, snapped to the hamlet H-block. idX/idY is the
-  // hearth tile — what a click on the roof reports.
+  // hearth tile (SE cell) — punched out of the house plate for
+  // drawing; clicks on the remaining roof still report it.
   const HOUSE = { x: 3, y: 4, w: 2, h: 2, idX: 4, idY: 5 };
 
   function project(x, y) {

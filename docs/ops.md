@@ -18,7 +18,7 @@ Do these from the live checkout after every merge to `main`, and whenever you wa
 | 4 | Pull and rebuild | see **A1** |
 | 5 | Health (public) | `curl -sf https://2007.gliffy.tv/health` |
 | 6 | Stats (on the box only) | `curl -s http://127.0.0.1:28080/stats` — watch `lagP99Ms`, `online`, `ws`, `reconnects` |
-| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=iso-grid` |
+| 7 | Hard-refresh the site | Ctrl+Shift+R / Cmd+Shift+R. `index.html` pins `app.js?v=iso-hearth` |
 | 8 | Rollback if the world is wrong | **A2** |
 
 `/stats` and `/metrics` are **404 at the edge on purpose**. Do not curl them via `https://2007.gliffy.tv`.
@@ -65,11 +65,11 @@ Open the site and **hard-refresh** (Ctrl+Shift+R / Cmd+Shift+R) so the browser d
 `client/index.html` pins the scripts:
 
 ```
-script src="iso.js?v=iso-grid"
-script src="sprites.js?v=iso-grid"
-script src="art.js?v=iso-grid"
-script src="app.js?v=iso-grid"
-script src="pick-npc.js?v=iso-grid"
+script src="iso.js?v=iso-hearth"
+script src="sprites.js?v=iso-hearth"
+script src="art.js?v=iso-hearth"
+script src="app.js?v=iso-hearth"
+script src="pick-npc.js?v=iso-hearth"
 ```
 
 Bump that `?v=` whenever a client fix must land through a cache. The world also sends `Cache-Control: no-cache` on HTML/JS/CSS; the query string is the belt as well as the braces.

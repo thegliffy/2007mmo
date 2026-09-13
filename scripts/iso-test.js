@@ -86,6 +86,11 @@ assert(iso.HOUSE.x === 3 && iso.HOUSE.y === 4 && iso.HOUSE.w === 2 && iso.HOUSE.
   "cottage is a 2×2 snapped to the first H (3,4)");
 assert(iso.HOUSE.idX === 4 && iso.HOUSE.idY === 5, "cottage click reports the hearth tile");
 
+const hearthNode = [{ id: "fire-1", kind: "fire", x: 4, y: 5 }];
+const hearthFeet = iso.tileFeet(4, 5, cam);
+const hearthClick = art.hitTile(hearthFeet.x, hearthFeet.y - 20, cam, map, hearthNode, []);
+assert(hearthClick && hearthClick.x === 4 && hearthClick.y === 5, "hearth node click stays on (4,5)");
+
 const originCam = { x: 0, y: 0 };
 const c00 = iso.tileCenter(0, 0, originCam);
 const f00 = iso.tileFeet(0, 0, originCam);
