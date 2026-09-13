@@ -347,6 +347,7 @@ Headless stand-in for two tabs (needs `pip install websockets`):
 python3 scripts/smoke.py
 python3 scripts/week1-loop.py   # berry → mill → tart, hazel → roast, persist
 python3 scripts/south-fight.py  # walk-equivalent: attack a Thornkin to the bracken
+python3 scripts/metal-loop.py   # forage → buy a pick → mine → smelt → forge a knife
 ```
 
 Each script registers its own throwaway account on first run (`scripts/hollow_auth.py`) and logs in on later runs. They are for a local stack — do not point them at the live host.
