@@ -169,6 +169,10 @@ func clientAuthError(w http.ResponseWriter, err error) {
 		authFail(w, http.StatusUnauthorized, auth.ErrBadCredentials.Error())
 	case errors.Is(err, auth.ErrUsernameTaken):
 		authFail(w, http.StatusConflict, auth.ErrUsernameTaken.Error())
+	case errors.Is(err, auth.ErrBanned):
+		// Say so plainly. A generic failure would read as a forgotten
+		// password and send them round the reset loop for nothing.
+		authFail(w, http.StatusForbidden, auth.ErrBanned.Error())
 	case errors.Is(err, auth.ErrBadUsername), errors.Is(err, auth.ErrWeakPassword):
 		authFail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, auth.ErrNoSession):

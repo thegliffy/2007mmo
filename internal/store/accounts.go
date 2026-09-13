@@ -72,19 +72,22 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())`,
 	return tx.Commit(ctx)
 }
 
+const accountCols = `SELECT id, username, username_key, pw_hash, role, banned_until FROM accounts`
+
 func (p *Postgres) AccountByUsernameKey(ctx context.Context, key string) (*auth.Account, error) {
-	return p.accountBy(ctx, `SELECT id, username, username_key, pw_hash FROM accounts WHERE username_key=$1`, key)
+	return p.accountBy(ctx, accountCols+` WHERE username_key=$1`, key)
 }
 
 func (p *Postgres) AccountByID(ctx context.Context, id string) (*auth.Account, error) {
-	return p.accountBy(ctx, `SELECT id, username, username_key, pw_hash FROM accounts WHERE id=$1`, id)
+	return p.accountBy(ctx, accountCols+` WHERE id=$1`, id)
 }
 
 func (p *Postgres) accountBy(ctx context.Context, q, arg string) (*auth.Account, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	var a auth.Account
-	err := p.pool.QueryRow(ctx, q, arg).Scan(&a.ID, &a.Username, &a.UsernameKey, &a.PWHash)
+	err := p.pool.QueryRow(ctx, q, arg).Scan(
+		&a.ID, &a.Username, &a.UsernameKey, &a.PWHash, &a.Role, &a.BannedUntil)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -99,6 +102,68 @@ func (p *Postgres) UpdatePasswordHash(ctx context.Context, accountID, hash strin
 	defer cancel()
 	_, err := p.pool.Exec(ctx, `UPDATE accounts SET pw_hash=$2 WHERE id=$1`, accountID, hash)
 	return err
+}
+
+func (p *Postgres) SetRole(ctx context.Context, accountID, role string) error {
+	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	_, err := p.pool.Exec(ctx, `UPDATE accounts SET role=$2 WHERE id=$1`, accountID, role)
+	return err
+}
+
+func (p *Postgres) SetBannedUntil(ctx context.Context, accountID string, until *time.Time) error {
+	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	_, err := p.pool.Exec(ctx, `UPDATE accounts SET banned_until=$2 WHERE id=$1`, accountID, until)
+	return err
+}
+
+// AdminAction is one row of the audit log.
+type AdminAction struct {
+	Actor      *string // nil when the host CLI acted with no account behind it
+	ActorName  string
+	Action     string
+	Target     *string
+	TargetName string
+	Detail     string
+	CreatedAt  time.Time
+}
+
+// RecordAdminAction appends to the audit log. Append-only: nothing in the
+// codebase updates or deletes these rows.
+func (p *Postgres) RecordAdminAction(ctx context.Context, a AdminAction) error {
+	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	_, err := p.pool.Exec(ctx, `
+INSERT INTO admin_actions (actor, actor_name, action, target, target_name, detail)
+VALUES ($1,$2,$3,$4,$5,$6)`,
+		a.Actor, a.ActorName, a.Action, a.Target, a.TargetName, a.Detail)
+	return err
+}
+
+// RecentAdminActions reports the audit log, newest first.
+func (p *Postgres) RecentAdminActions(ctx context.Context, limit int) ([]AdminAction, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := p.pool.Query(ctx, `
+SELECT actor, actor_name, action, target, target_name, coalesce(detail,''), created_at
+FROM admin_actions ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AdminAction
+	for rows.Next() {
+		var a AdminAction
+		if err := rows.Scan(&a.Actor, &a.ActorName, &a.Action, &a.Target, &a.TargetName, &a.Detail, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func (p *Postgres) PlayerIDForAccount(ctx context.Context, accountID string) (string, error) {
@@ -117,11 +182,13 @@ func (p *Postgres) PlayerIDForAccount(ctx context.Context, accountID string) (st
 
 // AccountSummary is one row of the admin account listing.
 type AccountSummary struct {
-	ID        string
-	Username  string
-	CreatedAt time.Time
-	LastLogin *time.Time
-	PlayerID  string
+	ID          string
+	Username    string
+	Role        string
+	BannedUntil *time.Time
+	CreatedAt   time.Time
+	LastLogin   *time.Time
+	PlayerID    string
 }
 
 // ListAccounts reports every account, newest first. Reporting only — it
@@ -130,7 +197,7 @@ func (p *Postgres) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rows, err := p.pool.Query(ctx, `
-SELECT a.id, a.username, a.created_at, a.last_login_at, coalesce(pl.id,'')
+SELECT a.id, a.username, a.role, a.banned_until, a.created_at, a.last_login_at, coalesce(pl.id,'')
 FROM accounts a
 LEFT JOIN players pl ON pl.account_id = a.id
 ORDER BY a.created_at DESC`)
@@ -141,7 +208,7 @@ ORDER BY a.created_at DESC`)
 	var out []AccountSummary
 	for rows.Next() {
 		var s AccountSummary
-		if err := rows.Scan(&s.ID, &s.Username, &s.CreatedAt, &s.LastLogin, &s.PlayerID); err != nil {
+		if err := rows.Scan(&s.ID, &s.Username, &s.Role, &s.BannedUntil, &s.CreatedAt, &s.LastLogin, &s.PlayerID); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

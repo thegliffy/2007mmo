@@ -45,6 +45,7 @@ const (
 
 var (
 	ErrBadCredentials = errors.New("that name and password do not match")
+	ErrBanned         = errors.New("that account is barred from the hamlet")
 	ErrUsernameTaken  = errors.New("that name is already spoken for")
 	ErrBadUsername    = errors.New("bad username")
 	ErrWeakPassword   = errors.New("weak password")

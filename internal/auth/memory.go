@@ -46,6 +46,9 @@ func (m *Memory) CreateAccount(_ context.Context, a Account, playerID, playerNam
 	if _, taken := m.byKey[a.UsernameKey]; taken {
 		return ErrUsernameTaken
 	}
+	if a.Role == "" {
+		a.Role = RolePlayer
+	}
 	m.accounts[a.ID] = a
 	m.byKey[a.UsernameKey] = a.ID
 	m.players[a.ID] = playerID
@@ -82,6 +85,30 @@ func (m *Memory) UpdatePasswordHash(_ context.Context, accountID, hash string) e
 		return ErrNoSession
 	}
 	a.PWHash = hash
+	m.accounts[accountID] = a
+	return nil
+}
+
+func (m *Memory) SetRole(_ context.Context, accountID, role string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.accounts[accountID]
+	if !ok {
+		return ErrNoSession
+	}
+	a.Role = role
+	m.accounts[accountID] = a
+	return nil
+}
+
+func (m *Memory) SetBannedUntil(_ context.Context, accountID string, until *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.accounts[accountID]
+	if !ok {
+		return ErrNoSession
+	}
+	a.BannedUntil = until
 	m.accounts[accountID] = a
 	return nil
 }

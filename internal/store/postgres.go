@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -54,8 +55,25 @@ func (p *Postgres) Ping(ctx context.Context) error {
 	return p.pool.Ping(ctx)
 }
 
-func (p *Postgres) migrate(ctx context.Context) error {
-	_, err := p.pool.Exec(ctx, `
+// writeTimeout bounds every store write. These calls run on the world's
+// single goroutine, so an unbounded one stops the whole hamlet: the tick
+// is 600ms, and this is the ceiling on how far behind one slow write can
+// push it. Exceeding it drops that write, which is always the safe
+// direction — items are granted only after a commit succeeds.
+const writeTimeout = 2 * time.Second
+
+// A migration is one numbered, named step. Every statement must be
+// idempotent: this scheme was adopted over a database that had already
+// been built by an unversioned CREATE IF NOT EXISTS block, so migration 1
+// has to be a no-op against the live schema rather than a fresh build.
+type migration struct {
+	version int
+	name    string
+	sql     string
+}
+
+var migrations = []migration{
+	{1, "core tables", `
 CREATE TABLE IF NOT EXISTS players (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
@@ -74,9 +92,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     cooldown_ticks  INTEGER NOT NULL DEFAULT 0,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS players_updated_at_idx ON players (updated_at DESC);
+CREATE INDEX IF NOT EXISTS players_updated_at_idx ON players (updated_at DESC);`},
 
--- Accounts: login credentials. One account owns exactly one player row.
+	{2, "accounts and the player link", `
 CREATE TABLE IF NOT EXISTS accounts (
     id            TEXT PRIMARY KEY,
     username      TEXT NOT NULL,
@@ -85,34 +103,106 @@ CREATE TABLE IF NOT EXISTS accounts (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ
 );
-
--- Nullable so player rows created before accounts existed survive the
--- upgrade. A unique index still permits many NULLs, so those legacy rows
--- simply become unreachable rather than blocking the migration.
 ALTER TABLE players ADD COLUMN IF NOT EXISTS account_id TEXT;
--- Nullable: rows written before health was persisted read back as "full".
-ALTER TABLE players ADD COLUMN IF NOT EXISTS hp INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS players_account_id_idx ON players (account_id);
-
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'players_account_id_fkey'
-    ) THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'players_account_id_fkey') THEN
         ALTER TABLE players
             ADD CONSTRAINT players_account_id_fkey
             FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE CASCADE;
     END IF;
-END $$;`)
-	return err
+END $$;`},
+
+	{3, "persisted health", `
+ALTER TABLE players ADD COLUMN IF NOT EXISTS hp INTEGER;`},
+
+	{4, "admin roles and audit log", `
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'player';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
+
+-- Append-only. actor_name and target_name are denormalised on purpose so a
+-- row stays readable after the account it names is deleted.
+CREATE TABLE IF NOT EXISTS admin_actions (
+    id          BIGSERIAL PRIMARY KEY,
+    actor       TEXT,
+    actor_name  TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target      TEXT,
+    target_name TEXT,
+    detail      TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS admin_actions_created_at_idx ON admin_actions (created_at DESC);`},
 }
 
-// writeTimeout bounds every store write. These calls run on the world's
-// single goroutine, so an unbounded one stops the whole hamlet: the tick
-// is 600ms, and this is the ceiling on how far behind one slow write can
-// push it. Exceeding it drops that write, which is always the safe
-// direction — items are granted only after a commit succeeds.
-const writeTimeout = 2 * time.Second
+// migrate applies whatever has not been recorded yet, each in its own
+// transaction, newest schema last.
+func (p *Postgres) migrate(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	applied := map[int]bool{}
+	rows, err := p.pool.Query(ctx, `SELECT version FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return err
+		}
+		applied[v] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, m := range migrations {
+		if applied[m.version] {
+			continue
+		}
+		tx, err := p.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, m.sql); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("migration %d (%s): %w", m.version, m.name, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO schema_migrations (version, name) VALUES ($1,$2)`,
+			m.version, m.name); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("record migration %d: %w", m.version, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %d: %w", m.version, err)
+		}
+		log.Printf("applied migration %d: %s", m.version, m.name)
+	}
+	return nil
+}
+
+// SchemaVersion reports the highest applied migration.
+func (p *Postgres) SchemaVersion(ctx context.Context) (int, error) {
+	var v *int
+	if err := p.pool.QueryRow(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&v); err != nil {
+		return 0, err
+	}
+	if v == nil {
+		return 0, nil
+	}
+	return *v, nil
+}
 
 func (p *Postgres) LoadPlayer(ctx context.Context, id string) (*world.PlayerRec, error) {
 	row := p.pool.QueryRow(ctx, `

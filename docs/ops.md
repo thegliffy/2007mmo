@@ -135,16 +135,30 @@ trusted. Caddy appends the address it saw rather than replacing the header, so
 the leftmost entry is whatever the client sent — trusting it would let anyone
 pick the address their password guesses are counted against.
 
-### A6 — Forgotten passwords (the only recovery path)
+### A6 — Accounts: recovery and moderation
 
 No email is collected, so there is no self-service reset. Recovery is an
 operator running the admin tool on the host, which ships inside the world image:
 
 ```bash
-docker compose exec world /app/admin list            # find the account
+docker compose exec world /app/admin list            # accounts, with role and ban state
 docker compose exec world /app/admin reset Kyle      # new random password, printed once
 docker compose exec world /app/admin revoke Kyle     # sign out everywhere, password untouched
+docker compose exec world /app/admin grant Kyle admin    # player | moderator | admin
+docker compose exec world /app/admin ban Kyle 24h        # bar and evict
+docker compose exec world /app/admin unban Kyle
+docker compose exec world /app/admin mute Kyle 15m       # quiet in chat
+docker compose exec world /app/admin audit               # who did what
 ```
+
+Every command writes to an append-only `admin_actions` table; `admin audit`
+reads it back. Role grants are host-only by design — see
+[docs/adr/0001-admin-role.md](adr/0001-admin-role.md).
+
+A **ban** fails `Auth.Resolve`, so the heartbeat loop evicts any open socket
+within about ten seconds (measured: 6.6s) and a fresh login gets 403. A **mute**
+lives in Redis under a TTL, so it expires on its own and survives a restart;
+the hub caches it and picks up a change within about ten seconds.
 
 `reset` prints a strong random password **once** — it is not stored anywhere in
 readable form and cannot be shown again. Relay it out of band and have the

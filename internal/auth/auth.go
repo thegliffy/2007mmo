@@ -20,11 +20,35 @@ const maxConcurrentHashes = 4
 
 // Account is one set of login credentials. Exactly one player row hangs
 // off each account.
+// Roles. Grants are host-only on purpose: an admin compromise must not be
+// able to mint more admins. See docs/adr/0001-admin-role.md.
+const (
+	RolePlayer    = "player"
+	RoleModerator = "moderator"
+	RoleAdmin     = "admin"
+)
+
+// ValidRole reports whether r is a role we recognise.
+func ValidRole(r string) bool {
+	switch r {
+	case RolePlayer, RoleModerator, RoleAdmin:
+		return true
+	}
+	return false
+}
+
 type Account struct {
 	ID          string
 	Username    string
 	UsernameKey string
 	PWHash      string
+	Role        string
+	BannedUntil *time.Time
+}
+
+// Banned reports whether the account is currently shut out.
+func (a *Account) Banned() bool {
+	return a != nil && a.BannedUntil != nil && a.BannedUntil.After(time.Now())
 }
 
 // Accounts is the canonical credential store.
@@ -35,6 +59,8 @@ type Accounts interface {
 	AccountByUsernameKey(ctx context.Context, key string) (*Account, error)
 	AccountByID(ctx context.Context, id string) (*Account, error)
 	UpdatePasswordHash(ctx context.Context, accountID, hash string) error
+	SetRole(ctx context.Context, accountID, role string) error
+	SetBannedUntil(ctx context.Context, accountID string, until *time.Time) error
 	PlayerIDForAccount(ctx context.Context, accountID string) (string, error)
 	TouchLogin(ctx context.Context, accountID string) error
 }
@@ -154,6 +180,10 @@ func (s *Service) Login(ctx context.Context, rawName, password string) (accountI
 		}
 	}
 
+	if acct.Banned() {
+		return "", "", "", "", ErrBanned
+	}
+
 	pid, err := s.accounts.PlayerIDForAccount(ctx, acct.ID)
 	if err != nil {
 		return "", "", "", "", err
@@ -187,6 +217,12 @@ func (s *Service) Resolve(ctx context.Context, token string) (accountID, playerI
 		// Account deleted under a live cookie.
 		_ = s.sessions.DeleteSession(ctx, token)
 		return "", "", "", ErrNoSession
+	}
+	if acct.Banned() {
+		// Drop the session so the ban survives a reconnect, and let the
+		// heartbeat loop evict whatever socket is still open.
+		_ = s.sessions.DeleteAccountSessions(ctx, acct.ID, "")
+		return "", "", "", ErrBanned
 	}
 	playerID, err = s.accounts.PlayerIDForAccount(ctx, accountID)
 	if err != nil {
@@ -325,6 +361,32 @@ func GeneratePassword(username string) (string, error) {
 	return "", errors.New("auth: could not generate an acceptable password")
 }
 
+// SetRole changes an account's role. Host-only by design; there is no
+// HTTP path to this.
+func (s *Service) SetRole(ctx context.Context, accountID, role string) error {
+	if !ValidRole(role) {
+		return fmt.Errorf("unknown role %q", role)
+	}
+	return s.accounts.SetRole(ctx, accountID, role)
+}
+
+// Ban shuts an account out until the given time and signs it out
+// everywhere. Pass nil to lift it.
+func (s *Service) Ban(ctx context.Context, accountID string, until *time.Time) error {
+	if err := s.accounts.SetBannedUntil(ctx, accountID, until); err != nil {
+		return err
+	}
+	if until == nil {
+		return nil
+	}
+	return s.sessions.DeleteAccountSessions(ctx, accountID, "")
+}
+
+// Account reports an account by id, for operator tooling.
+func (s *Service) Account(ctx context.Context, accountID string) (*Account, error) {
+	return s.accounts.AccountByID(ctx, accountID)
+}
+
 // Logout drops one session.
 func (s *Service) Logout(ctx context.Context, token string) error {
 	if token == "" {
@@ -376,6 +438,7 @@ func newID() string {
 // IsAuthError reports whether err is one a client caused and should see.
 func IsAuthError(err error) bool {
 	return errors.Is(err, ErrBadCredentials) ||
+		errors.Is(err, ErrBanned) ||
 		errors.Is(err, ErrUsernameTaken) ||
 		errors.Is(err, ErrBadUsername) ||
 		errors.Is(err, ErrWeakPassword) ||

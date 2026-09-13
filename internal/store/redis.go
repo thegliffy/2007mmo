@@ -102,6 +102,30 @@ func (r *Redis) DeleteAccountSessions(ctx context.Context, accountID, keep strin
 	return err
 }
 
+func muteKey(accountID string) string { return "mute:" + accountID }
+
+// SetMute quiets an account for ttl. Redis expiry does the un-muting, so
+// nothing has to remember to.
+func (r *Redis) SetMute(ctx context.Context, accountID string, ttl time.Duration) error {
+	if ttl <= 0 {
+		return r.c.Del(ctx, muteKey(accountID)).Err()
+	}
+	return r.c.Set(ctx, muteKey(accountID), "1", ttl).Err()
+}
+
+// MuteRemaining reports how much longer an account is quiet; zero when it
+// is not muted.
+func (r *Redis) MuteRemaining(ctx context.Context, accountID string) (time.Duration, error) {
+	d, err := r.c.TTL(ctx, muteKey(accountID)).Result()
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, nil
+	}
+	return d, nil
+}
+
 func (r *Redis) SetPresence(ctx context.Context, playerID string) error {
 	return r.c.Set(ctx, "presence:"+playerID, "1", 30*time.Second).Err()
 }

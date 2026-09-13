@@ -192,7 +192,8 @@ T3 rule: gather / mill / cook / eat **write Postgres first**, then update memory
 ```
 cmd/world          authoritative world + HTTP/WS/WSS + auth endpoints
 cmd/bots           headless load harness
-cmd/admin          operator tool: list accounts, reset a password, revoke sessions
+cmd/admin          operator tool: accounts, password reset, roles, ban/mute, audit log
+docs/adr           architecture decision records
 internal/world     tick, map, path, woodland work, pack, combat v0
 internal/store     Postgres (accounts + packs) + Redis (sessions/presence)
 internal/auth      accounts, scrypt passwords, session issue/revoke

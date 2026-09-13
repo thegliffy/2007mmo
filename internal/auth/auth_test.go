@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 const goodPW = "bramble-hollow-9"
@@ -397,5 +398,86 @@ func TestGeneratePassword(t *testing.T) {
 				t.Fatalf("password %q contains an ambiguous character %q", pw, ambiguous)
 			}
 		}
+	}
+}
+
+// A ban must stop a new login and invalidate a session already in hand —
+// the second half is what lets the heartbeat loop evict a live socket.
+func TestBanBlocksLoginAndResolve(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, token, err := svc.Register(ctx, "Rowdy", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, _, _, err := svc.Resolve(ctx, token); err != nil {
+		t.Fatalf("session should work before the ban: %v", err)
+	}
+
+	until := time.Now().Add(time.Hour)
+	if err := svc.Ban(ctx, acctID, &until); err != nil {
+		t.Fatalf("ban: %v", err)
+	}
+	if _, _, _, err := svc.Resolve(ctx, token); !errors.Is(err, ErrBanned) && !errors.Is(err, ErrNoSession) {
+		t.Fatalf("banned session resolved: %v", err)
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Rowdy", goodPW); !errors.Is(err, ErrBanned) {
+		t.Fatalf("banned account logged in: %v", err)
+	}
+
+	// Lifting it lets them back in.
+	if err := svc.Ban(ctx, acctID, nil); err != nil {
+		t.Fatalf("unban: %v", err)
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Rowdy", goodPW); err != nil {
+		t.Fatalf("unbanned account refused: %v", err)
+	}
+}
+
+// An expired ban is not a ban.
+func TestExpiredBanIsIgnored(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, _, err := svc.Register(ctx, "Rowdy", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := svc.Ban(ctx, acctID, &past); err != nil {
+		t.Fatalf("ban: %v", err)
+	}
+	if _, _, _, _, err := svc.Login(ctx, "Rowdy", goodPW); err != nil {
+		t.Fatalf("an expired ban still blocked login: %v", err)
+	}
+}
+
+func TestRoles(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	acctID, _, _, _, err := svc.Register(ctx, "Kyle", goodPW)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	acct, _ := svc.Account(ctx, acctID)
+	if acct.Role != RolePlayer {
+		t.Fatalf("new accounts should start as %q, got %q", RolePlayer, acct.Role)
+	}
+	if err := svc.SetRole(ctx, acctID, RoleAdmin); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	acct, _ = svc.Account(ctx, acctID)
+	if acct.Role != RoleAdmin {
+		t.Fatalf("role = %q", acct.Role)
+	}
+	if err := svc.SetRole(ctx, acctID, "overlord"); err == nil {
+		t.Fatal("an unknown role was accepted")
+	}
+	for _, r := range []string{RolePlayer, RoleModerator, RoleAdmin} {
+		if !ValidRole(r) {
+			t.Errorf("%q should be valid", r)
+		}
+	}
+	if ValidRole("root") {
+		t.Error("\"root\" should not be a role")
 	}
 }

@@ -78,6 +78,12 @@ type Hub struct {
 
 	proxy   *proxyTrust
 	upgrade websocket.Upgrader
+
+	// muted is accountID -> when the mute lifts, refreshed by the
+	// heartbeat loop. Cached rather than read per message: cmdChat runs on
+	// the world goroutine, and a Redis round-trip there is exactly the
+	// cost that was just taken off the tick.
+	muted map[string]time.Time
 }
 
 // newUpgrader wires the origin check into the WebSocket handshake. This
@@ -108,7 +114,19 @@ func New(w *world.World, pg *store.Postgres, rd *store.Redis, a *auth.Service, t
 		clients: make(map[string]*Client),
 		metrics: NewMetrics(),
 		limits:  limitsFromEnv(),
+		muted:   make(map[string]time.Time),
 	}
+}
+
+// isMuted reports whether an account is currently quiet.
+func (h *Hub) isMuted(accountID string) bool {
+	if accountID == "" {
+		return false
+	}
+	h.mu.Lock()
+	until, ok := h.muted[accountID]
+	h.mu.Unlock()
+	return ok && time.Now().Before(until)
 }
 
 func (h *Hub) Run(ctx context.Context) {
@@ -175,6 +193,10 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 			}
 		}
 	case cmdChat:
+		if c.client != nil && h.isMuted(c.client.accountID) {
+			h.sendJSON(c.client, protocol.Err{T: protocol.MsgErr, Msg: "The hamlet cannot hear you just now."})
+			return
+		}
 		from, text, ok := h.World.TryChat(c.playerID, c.text)
 		if !ok {
 			return
@@ -338,6 +360,15 @@ func (h *Hub) heartbeatLoop(ctx context.Context) {
 					continue
 				}
 				_ = h.Redis.SetPresence(stepCtx, cl.playerID)
+				if left, mErr := h.Redis.MuteRemaining(stepCtx, cl.accountID); mErr == nil {
+					h.mu.Lock()
+					if left > 0 {
+						h.muted[cl.accountID] = time.Now().Add(left)
+					} else {
+						delete(h.muted, cl.accountID)
+					}
+					h.mu.Unlock()
+				}
 				cancel()
 			}
 		}
@@ -440,6 +471,14 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		done:      make(chan struct{}),
 		hub:       h,
 	}
+	if h.Redis != nil {
+		if left, mErr := h.Redis.MuteRemaining(r.Context(), accountID); mErr == nil && left > 0 {
+			h.mu.Lock()
+			h.muted[accountID] = time.Now().Add(left)
+			h.mu.Unlock()
+		}
+	}
+
 	go cl.writeLoop()
 	cl.readLoop()
 }

@@ -424,3 +424,34 @@ func TestNameCollisionIsNotCountedAsLoginFailure(t *testing.T) {
 		t.Fatalf("loginFails = %d, want %d after one wrong password", got, before+1)
 	}
 }
+
+// A banned account must be told it is banned. Falling through to the
+// generic 500 reads as a server fault and sends the player round the
+// password-reset loop for nothing.
+func TestBannedLoginIsForbiddenNotServerError(t *testing.T) {
+	hr := newHarness(t)
+	hr.register(t, "Rowdy")
+
+	acct, err := hr.mem.AccountByUsernameKey(context.Background(), "rowdy")
+	if err != nil || acct == nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	until := time.Now().Add(time.Hour)
+	if err := hr.hub.Auth.Ban(context.Background(), acct.ID, &until); err != nil {
+		t.Fatalf("ban: %v", err)
+	}
+
+	resp := hr.post(t, "/auth/login", protocol.AuthRequest{Username: "Rowdy", Password: testPW}, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %d, want 403", resp.StatusCode)
+	}
+	var body protocol.AuthError
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if !strings.Contains(strings.ToLower(body.Error), "barred") {
+		t.Fatalf("error text %q does not say the account is barred", body.Error)
+	}
+	if sessionCookieFrom(resp) != nil {
+		t.Fatal("a banned login must not set a session cookie")
+	}
+}
