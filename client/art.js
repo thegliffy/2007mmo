@@ -74,9 +74,12 @@
       const maxy = pts[2].y;
       ctx.drawImage(im, minx, miny, maxx - minx, maxy - miny);
       ctx.restore();
-      fillPoly(ctx, pts, null, "rgba(20,12,6,0.22)", 0.8);
+      if ((tx + ty) % 2) {
+        fillPoly(ctx, pts, "rgba(20,12,6,0.10)", null);
+      }
+      fillPoly(ctx, pts, null, "rgba(20,12,6,0.45)", 1.1);
     } else {
-      fillPoly(ctx, pts, fill, "rgba(20,12,6,0.2)", 0.8);
+      fillPoly(ctx, pts, fill, "rgba(20,12,6,0.45)", 1.1);
     }
     if (key === "terrain/water") {
       ctx.strokeStyle = "rgba(180,220,255," + (0.25 + 0.2 * (flicker || 0)) + ")";
@@ -95,7 +98,7 @@
 
   function raiseWall(ctx, tx, ty, cam) {
     const I = iso();
-    const h = 22;
+    const h = 28;
     const t = I.toScreen(tx, ty, cam);
     const r = I.toScreen(tx + 1, ty, cam);
     const b = I.toScreen(tx + 1, ty + 1, cam);
@@ -288,23 +291,23 @@
 
   function spriteBox(kind, extra) {
     switch (kind) {
-      case "tree": return { w: 40, h: 78 };
-      case "stump": return { w: 28, h: 20 };
+      case "tree": return { w: 56, h: 88 };
+      case "stump": return { w: 40, h: 28 };
       case "bramble":
-      case "hazel": return { w: 32, h: 36 };
-      case "millstone": return { w: 34, h: 34 };
-      case "oak_chest": return { w: 32, h: 30 };
-      case "kiln": return { w: 34, h: 52 };
-      case "anvil": return { w: 32, h: 30 };
-      case "hearth": return { w: 36, h: 48 };
-      case "stile": return { w: 36, h: 32 };
-      case "house": return { w: 110, h: 120 };
-      case "pedlar_stall": return { w: 40, h: 44 };
-      case "ore": return { w: 30, h: 24 };
-      case "wall": return { w: 44, h: 30 };
-      case "figure": return { w: 24, h: 46 };
-      case "hostile": return { w: extra && extra.big ? 38 : 28, h: extra && extra.big ? 52 : 42 };
-      default: return { w: 26, h: 26 };
+      case "hazel": return { w: 48, h: 52 };
+      case "millstone": return { w: 52, h: 48 };
+      case "oak_chest": return { w: 48, h: 44 };
+      case "kiln": return { w: 52, h: 72 };
+      case "anvil": return { w: 48, h: 40 };
+      case "hearth": return { w: 52, h: 64 };
+      case "stile": return { w: 72, h: 56 };
+      case "house": return { w: 140, h: 160 };
+      case "pedlar_stall": return { w: 56, h: 64 };
+      case "ore": return { w: 44, h: 36 };
+      case "wall": return { w: 56, h: 40 };
+      case "figure": return { w: 36, h: 72 };
+      case "hostile": return { w: extra && extra.big ? 48 : 36, h: extra && extra.big ? 80 : 72 };
+      default: return { w: 32, h: 32 };
     }
   }
 
@@ -440,8 +443,8 @@
 
       if (s.kind === "wall") { raiseWall(ctx, s.x, s.y, cam); continue; }
       if (s.kind === "house") {
-        if (!(S && (S.blitFeet(ctx, "buildings/house", feet.x, feet.y, 176, 176) ||
-                    S.blitFeet(ctx, "props/house", feet.x, feet.y, 88, 88)))) {
+        if (!(S && (S.blitFeet(ctx, "buildings/house", feet.x, feet.y, 192, 192) ||
+                    S.blitFeet(ctx, "props/house", feet.x, feet.y, 96, 96)))) {
           ctx.fillStyle = "#6b4423";
           ctx.fillRect(feet.x - 40, feet.y - 70, 80, 54);
           ctx.fillStyle = "#8a5a28";
@@ -456,22 +459,22 @@
         continue;
       }
       if (s.kind === "stile") {
-        S && S.blitFeet(ctx, "props/stile", feet.x, feet.y, 64, 64);
+        S && S.blitFeet(ctx, "props/stile", feet.x, feet.y + 6, 120, 100);
         continue;
       }
       if (s.kind === "pedlar_stall") {
-        S && S.blitFeet(ctx, "props/pedlar_stall", feet.x, feet.y, 70, 70);
+        S && S.blitFeet(ctx, "props/pedlar_stall", feet.x, feet.y, 96, 96);
         continue;
       }
       if (s.kind === "tree") {
         if (s.ready === false) {
-          if (!(S && S.blitFeet(ctx, "props/stump", feet.x, feet.y, 40, 36))) {
+          if (!(S && S.blitFeet(ctx, "props/stump", feet.x, feet.y, 72, 64))) {
             ctx.fillStyle = "#6b3e1a";
             ctx.beginPath();
             ctx.ellipse(feet.x, feet.y - 4, 10, 5, 0, 0, Math.PI * 2);
             ctx.fill();
           }
-        } else if (!(S && S.blitFeet(ctx, "props/tree", feet.x, feet.y, 68, 88))) {
+        } else if (!(S && S.blitFeet(ctx, "props/tree", feet.x, feet.y, 96, 96))) {
           ctx.fillStyle = "#6b3e1a";
           ctx.fillRect(feet.x - 4, feet.y - 36, 8, 36);
           ctx.fillStyle = "#245218";
@@ -513,7 +516,8 @@
         const key = S && S.nodeKey(n);
         // Map glyph T already drew the ready tree or the stump.
         if (n.kind === "tree") continue;
-        const drew = key && S.blitFeet(ctx, key, feet.x, feet.y, 58, n.kind === "kiln" || n.id === "fire-1" ? 72 : 58);
+        const tall = n.kind === "kiln" || n.id === "fire-1";
+        const drew = key && S.blitFeet(ctx, key, feet.x, feet.y, 96, tall ? 96 : 96);
         if (!drew) {
           if (n.kind === "bush") {
             ctx.fillStyle = n.ready ? "#2f5a22" : "#3a4a30";
@@ -599,10 +603,10 @@
           ctx.stroke();
         }
         const nkey = S && S.npcKey(e);
-        const drewNpc = nkey && S.blitFeet(ctx, nkey, feet.x, feet.y, hostile ? 52 : 48, hostile ? 72 : 70);
+        const drewNpc = nkey && S.blitFeet(ctx, nkey, feet.x, feet.y, 64, 96);
         if (!drewNpc) {
-          if (hostile) drawHostileFallback(ctx, feet.x, feet.y, 11, e.name);
-          else drawPaperdoll(ctx, feet.x, feet.y, 11, looksOf(e), f.kind === "you");
+          if (hostile) drawHostileFallback(ctx, feet.x, feet.y, 14, e.name);
+          else drawPaperdoll(ctx, feet.x, feet.y, 14, looksOf(e), f.kind === "you");
         } else if (f.kind === "you") {
           ctx.strokeStyle = "rgba(255,244,176,0.7)";
           ctx.beginPath();

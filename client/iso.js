@@ -2,8 +2,8 @@
 // Gameplay stays on integer tile (x, y). This file only maps those
 // onto the canvas and back. Shared with scripts/iso-test.js (node).
 (function (root) {
-  const TW = 72;
-  const TH = 36;
+  const TW = 96;
+  const TH = 48;
 
   function project(x, y) {
     return {
