@@ -61,25 +61,13 @@
     const pts = I.diamond(tx, ty, cam);
     const S = spr();
     const im = S && key && S.ready(key);
+    // Flat diamond fill first so gaps never flash through.
+    fillPoly(ctx, pts, fill, "rgba(20,12,6,0.28)", 0.8);
     if (im) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.closePath();
-      ctx.clip();
-      const minx = Math.min(pts[3].x, pts[0].x);
-      const maxx = Math.max(pts[1].x, pts[0].x);
-      const miny = pts[0].y;
-      const maxy = pts[2].y;
-      ctx.drawImage(im, minx, miny, maxx - minx, maxy - miny);
-      ctx.restore();
-      if ((tx + ty) % 2) {
-        fillPoly(ctx, pts, "rgba(20,12,6,0.10)", null);
-      }
-      fillPoly(ctx, pts, null, "rgba(20,12,6,0.45)", 1.1);
-    } else {
-      fillPoly(ctx, pts, fill, "rgba(20,12,6,0.45)", 1.1);
+      // AD terrain is already a ¾ cube (diamond top + two sides).
+      // Blit at tile size — do not stretch a cube into a flat rhombus.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(im, pts[3].x, pts[0].y, I.TW, I.TW);
     }
     if (key === "terrain/water") {
       ctx.strokeStyle = "rgba(180,220,255," + (0.25 + 0.2 * (flicker || 0)) + ")";
@@ -388,20 +376,20 @@
       if (n.kind === "tree" && !n.ready) spentTree[n.x + "," + n.y] = true;
     }
 
+    const ground = [];
     for (let y = 0; y < m.h; y++) {
       const row = m.tiles[y] || "";
       for (let x = 0; x < m.w; x++) {
         const feet = I.tileFeet(x, y, cam);
-        if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, 90)) continue;
-        const g = row[x] || ".";
-        const scars = x >= 27;
-        const key = S ? S.tileKey(g === "T" ? "." : g, scars) : "";
-        if (g === "#") {
-          drawDiamond(ctx, x, y, cam, "#3a3228", null, flicker);
-        } else {
-          drawDiamond(ctx, x, y, cam, groundFill(g, x, y, scars), key, flicker);
-        }
+        if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, 110)) continue;
+        ground.push({ x, y, g: row[x] || "." });
       }
+    }
+    ground.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.y - b.y || a.x - b.x);
+    for (const t of ground) {
+      const scars = t.x >= 27;
+      const key = S ? S.tileKey(t.g === "T" ? "." : t.g, scars) : "";
+      drawDiamond(ctx, t.x, t.y, cam, groundFill(t.g, t.x, t.y, scars), key, flicker);
     }
 
     const sprites = [];
@@ -441,7 +429,10 @@
       const feet = I.tileFeet(s.x, s.y, cam);
       if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, 140)) continue;
 
-      if (s.kind === "wall") { raiseWall(ctx, s.x, s.y, cam); continue; }
+      if (s.kind === "wall") {
+        if (!(S && S.ready("terrain/wall"))) raiseWall(ctx, s.x, s.y, cam);
+        continue;
+      }
       if (s.kind === "house") {
         if (!(S && (S.blitFeet(ctx, "buildings/house", feet.x, feet.y, 192, 192) ||
                     S.blitFeet(ctx, "props/house", feet.x, feet.y, 96, 96)))) {
