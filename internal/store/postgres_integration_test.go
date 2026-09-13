@@ -322,7 +322,8 @@ func TestPGBankPersistsAndPackWriteKeepsIt(t *testing.T) {
 	}
 
 	// Unreadable bank JSON must refuse rather than hand back an empty chest.
-	if _, err := pg.pool.Exec(ctx, `UPDATE players SET bank='not-json' WHERE id='player-1'`); err != nil {
+	// JSONB will not store non-JSON; an object is valid JSON and a bad bank.
+	if _, err := pg.pool.Exec(ctx, `UPDATE players SET bank='{"broken":true}' WHERE id='player-1'`); err != nil {
 		t.Fatalf("corrupt: %v", err)
 	}
 	if _, err := pg.LoadPlayer(ctx, "player-1"); err == nil {
