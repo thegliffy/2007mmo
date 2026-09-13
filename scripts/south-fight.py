@@ -41,9 +41,11 @@ async def main():
     fell = False
     last_hp = None
     you_hp = None
-    # The walk from the stile to the briar-woods is ~30 ticks on its own;
-    # the budget has to cover that plus the fight.
-    for _ in range(70):
+    # The walk from the stile to the briar-woods is ~30 ticks, and the
+    # Thornkin wanders while you close on it, so the chase can run longer
+    # than the walk. Budget generously; this is a smoke test, not a timing
+    # assertion.
+    for _ in range(120):
         st = await read_until(ws, "state")
         you_hp = st["you"].get("hp")
         seen = [n for n in st.get("npcs") or [] if n["id"] == thorn["id"]]

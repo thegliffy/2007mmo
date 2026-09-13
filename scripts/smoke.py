@@ -50,7 +50,9 @@ async def main():
     assert chat["from"] == ash and "hearth" in chat["text"], chat
     print("chat ok", chat)
 
-    bush = next(n for n in a_s["nodes"] if n["kind"] == "bush")
+    # From the welcome, not the state frame: state carries only nodes that
+    # are not at rest, so a ready bush is deliberately absent from it.
+    bush = next(n for n in a_w["nodes"] if n["kind"] == "bush")
     await a_ws.send(json.dumps({"t": "interact", "id": bush["id"]}))
     berries = 0
     # Work nodes block now, so the walk to the thicket is 15-17 ticks from

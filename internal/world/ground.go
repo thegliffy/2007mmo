@@ -338,3 +338,56 @@ func (w *World) tickPickup(ctx context.Context, p *Player) {
 		w.note(p.ID, "You take "+picked.label(protocol.Catalog())+".")
 	}
 }
+
+// Campfires. A pile of logs can be set alight and used like the hearth
+// until it burns down.
+const (
+	campfireBurnTicks = 150 // ~90s of cooking
+	logsPerFire       = 1
+)
+
+// LightFire turns a pile of logs on the ground into a campfire.
+//
+// The logs are consumed from the pile, which is memory only, and the fire
+// is a temporary node, also memory only. Nothing here touches the store:
+// no item enters or leaves a pack, so there is nothing that could be
+// duplicated by a crash.
+func (w *World) LightFire(id, groundID string) (string, bool) {
+	p := w.Players[id]
+	g := w.groundByID(groundID)
+	if p == nil || g == nil {
+		return "", false
+	}
+	if !g.visibleTo(id) {
+		return "That is not yours to light yet.", false
+	}
+	if countItem(g.Inv, protocol.ItemLog) < logsPerFire {
+		return "You need a log on the ground to build a fire.", false
+	}
+	if !adjacent(p.X, p.Y, g.X, g.Y) && (p.X != g.X || p.Y != g.Y) {
+		return "You are too far from it.", false
+	}
+	for _, n := range w.Nodes {
+		if n.X == g.X && n.Y == g.Y && n.Kind == KindFire {
+			return "Something is already burning there.", false
+		}
+	}
+
+	g.Inv = removeItem(g.Inv, protocol.ItemLog, logsPerFire)
+	if g.empty() {
+		delete(w.Ground, g.ID)
+	}
+
+	w.groundSeq++
+	fire := &Node{
+		ID:        fmt.Sprintf("campfire-%d", w.groundSeq),
+		Kind:      KindFire,
+		X:         g.X,
+		Y:         g.Y,
+		Remaining: 1,
+		Max:       1,
+		Burns:     campfireBurnTicks,
+	}
+	w.Nodes[fire.ID] = fire
+	return "The log catches. A small fire, good for a while.", true
+}

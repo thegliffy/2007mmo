@@ -16,6 +16,7 @@ const (
 	MsgUse      = "use"
 	MsgChat     = "chat"
 	MsgDrop     = "drop"
+	MsgLight    = "light"
 	MsgPing     = "ping"
 
 	MsgWelcome = "welcome"
@@ -40,21 +41,27 @@ const (
 	// Dropped by southern beasts. Coins are deliberately not an item:
 	// they live in a purse and never cost a pack slot.
 	ItemLeather = "leather"
+	ItemLog     = "log"
+	ItemPaper   = "paper"
 
 	SkillForage  = "forage"
 	SkillCook    = "cook"
 	SkillMelee   = "melee"
 	SkillDefense = "defense"
+	SkillWood    = "wood"
 
 	KindBush  = "bush"
 	KindHazel = "hazel"
 	KindMill  = "mill"
 	KindFire  = "fire"
+	KindTree  = "tree"
 
 	ActionForage = "forage"
 	ActionMill   = "mill"
 	ActionCook   = "cook"
 	ActionRoast  = "roast"
+	ActionChop   = "chop"
+	ActionPaper  = "paper"
 	ActionFight  = "fight"
 )
 
@@ -116,13 +123,21 @@ type GroundView struct {
 	Mine bool `json:"mine,omitempty"`
 }
 
+// NodeView is a work node. Position and kind never change, so the full
+// list ships once in the welcome and state frames carry only the nodes
+// that are NOT in their resting state — which is nearly none of them.
+// With 75 choppable trees on the map, sending all of them 1.67 times a
+// second to every client was most of the state frame for no reason.
 type NodeView struct {
 	ID    string `json:"id"`
-	Kind  string `json:"kind"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
+	Kind  string `json:"kind,omitempty"`
+	X     int    `json:"x,omitempty"`
+	Y     int    `json:"y,omitempty"`
 	Ready bool   `json:"ready"`
 	Left  int    `json:"left,omitempty"`
+	// Fire marks a campfire a player lit; Burns is how many ticks it has
+	// left before it dies down.
+	Burns int `json:"burns,omitempty"`
 }
 
 type NPCView struct {
@@ -154,6 +169,7 @@ type Welcome struct {
 	TickMs   int                  `json:"tickMs"`
 	World    string               `json:"world"`
 	Map      TileMap              `json:"map"`
+	Nodes    []NodeView           `json:"nodes"`
 	You      YouView              `json:"you"`
 	Items    map[string]ItemInfo  `json:"items"`
 	Skills   map[string]SkillInfo `json:"skillInfo"`
@@ -187,8 +203,9 @@ type State struct {
 	You     YouView      `json:"you"`
 	Players []PlayerView `json:"players"`
 	NPCs    []NPCView    `json:"npcs"`
-	Nodes   []NodeView   `json:"nodes"`
-	Ground  []GroundView `json:"ground"`
+	// Nodes carries only what is not at rest. Anything absent is ready.
+	Nodes  []NodeView   `json:"nodes"`
+	Ground []GroundView `json:"ground"`
 }
 
 type Chat struct {
@@ -259,6 +276,7 @@ func SkillCatalog() map[string]SkillInfo {
 		SkillCook:    {Name: "Cooking", Order: 2},
 		SkillMelee:   {Name: "Melee", Order: 3},
 		SkillDefense: {Name: "Defense", Order: 4},
+		SkillWood:    {Name: "Woodcutting", Order: 5},
 	}
 }
 
@@ -270,5 +288,7 @@ func Catalog() map[string]ItemInfo {
 		ItemNut:     {Name: "Hazel nut", Glyph: "Hz"},
 		ItemRoast:   {Name: "Roast hazel", Glyph: "Rh"},
 		ItemLeather: {Name: "Goblin leather", Glyph: "Gl"},
+		ItemLog:     {Name: "Log", Glyph: "Lg"},
+		ItemPaper:   {Name: "Paper", Glyph: "Pa"},
 	}
 }

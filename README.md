@@ -45,6 +45,43 @@ Week 1 is still the woodland-life cut under the new map.
 
 **Camera:** still **top-down**. A ¾ view is a follow-up.
 
+### Wood
+
+Trees are work now, not scenery. **72 of the 75** on the map can be chopped —
+the other three are walled in by their own clump, and a tree you can never stand
+beside has no business being a node.
+
+- Click a **tree** (channel 3 ticks) → `Log` + **Woodcutting** XP.
+- Click the **millstone** with a log (channel 3 ticks) → `Paper` + Woodcutting XP.
+- Drop a log and **right-click** it on the ground → a **campfire** that cooks
+  exactly like the hearth for about 90 seconds, then dies down.
+
+The millstone now does two jobs: it crushes brambleberries into pulp, and pulps
+logs into paper. Carrying both, the berry goes first, so the older recipe behaves
+exactly as it did.
+
+A campfire is a node that never touches the store. It exists in memory, burns
+down, and vanishes — persisting it would leave a fire on the map after a restart
+with nothing burning under it.
+
+### Nodes are sent once, not every tick
+
+Adding 72 trees took the node count from 8 to 80, and the state frame used to
+carry every node 1.67 times a second to every client. Positions and kinds never
+change, so the **full list now ships once in the welcome** and state frames carry
+**only the nodes that are not at rest** — a chopped tree, a bramble on cooldown,
+a burning campfire. Anything absent is ready.
+
+Measured on the live client:
+
+| | |
+|---|---|
+| welcome | 7,217 bytes, 80 nodes — sent once |
+| state frame | **921 bytes**, 3 nodes |
+| what a frame used to carry | ~7,100 bytes |
+
+An 87% smaller frame, and the reason adding trees did not make the fan-out worse.
+
 ### Week 1 gather loop
 
 - Click a **bramble** (channel 2 ticks) → `Brambleberry` + Foraging XP.

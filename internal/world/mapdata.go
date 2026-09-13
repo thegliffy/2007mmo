@@ -77,7 +77,7 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 
 func seedNodes() []*Node {
 	var out []*Node
-	bush, hazel, mill := 0, 0, 0
+	bush, hazel, mill, tree := 0, 0, 0, 0
 	for y, row := range mapRows {
 		for x, c := range row {
 			switch c {
@@ -111,6 +111,23 @@ func seedNodes() []*Node {
 					Remaining: 1,
 					Max:       1,
 				})
+			case 'T':
+				// Only trees you can actually stand beside. A tree buried
+				// inside a clump has no walkable neighbour, so it can never
+				// be chopped and has no business being a node — it stays
+				// scenery, and the node list stays smaller for it.
+				if !hasWalkableNeighbour(x, y) {
+					continue
+				}
+				tree++
+				out = append(out, &Node{
+					ID:        "tree-" + itoa(tree),
+					Kind:      KindTree,
+					X:         x,
+					Y:         y,
+					Remaining: treeYield,
+					Max:       treeYield,
+				})
 			case '*':
 				out = append(out, &Node{
 					ID:        "fire-1",
@@ -124,6 +141,28 @@ func seedNodes() []*Node {
 		}
 	}
 	return out
+}
+
+// hasWalkableNeighbour reports whether any of the four tiles around
+// (x,y) can be stood on.
+func hasWalkableNeighbour(x, y int) bool {
+	for _, d := range [4][2]int{{0, -1}, {1, 0}, {0, 1}, {-1, 0}} {
+		nx, ny := x+d[0], y+d[1]
+		if ny < 0 || ny >= len(mapRows) {
+			continue
+		}
+		row := mapRows[ny]
+		if nx < 0 || nx >= len(row) {
+			continue
+		}
+		switch row[nx] {
+		case '#', 'T', '~', 'B', 'Z', 'M', '*':
+			// blocked
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func seedNPCs() []*NPC {

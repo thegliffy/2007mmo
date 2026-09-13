@@ -12,6 +12,7 @@
     players: [],
     npcs: [],
     nodes: [],
+    baseNodes: [],
     ground: [],
     items: {},
     skillInfo: {},
@@ -98,6 +99,21 @@
     if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(obj));
   }
 
+  // Anything absent from the frame is back at rest; anything present
+  // overrides. A campfire arrives complete, because it did not exist when
+  // the welcome was sent.
+  function mergeNodes(changed) {
+    const byId = {};
+    for (const n of changed) byId[n.id] = n;
+    const out = state.baseNodes.map((n) =>
+      byId[n.id] ? { ...n, ...byId[n.id] } : { ...n, ready: true, left: n.left }
+    );
+    for (const n of changed) {
+      if (!state.baseNodes.some((b) => b.id === n.id)) out.push(n);
+    }
+    return out;
+  }
+
   function rememberPos() {
     const next = {};
     const all = [];
@@ -121,6 +137,10 @@
         state.you = msg.you;
         state.items = msg.items || {};
       state.skillInfo = msg.skillInfo || {};
+      // Every node's position and kind, sent once. State frames carry only
+      // the ones that are not at rest.
+      state.baseNodes = msg.nodes || [];
+      state.nodes = state.baseNodes.map((n) => ({ ...n, ready: true }));
         state.handle = msg.handle || null;
         state.username = msg.username || null;
         $("acct-name").textContent = state.username || "";
@@ -137,7 +157,7 @@
         state.you = msg.you;
         state.players = msg.players || [];
         state.npcs = msg.npcs || [];
-        state.nodes = msg.nodes || [];
+        state.nodes = mergeNodes(msg.nodes || []);
       state.ground = msg.ground || [];
         rememberPos();
         renderSkills();
@@ -276,6 +296,17 @@
     if (x < 0 || y < 0 || x >= state.map.w || y >= state.map.h) return null;
     return { x, y };
   }
+
+  // Right-click a pile to set it alight, mirroring the pack where
+  // left-click uses and right-click drops.
+  canvas.addEventListener("contextmenu", (e) => {
+    const t = tileAt(e.clientX, e.clientY);
+    if (!t) return;
+    const pile = state.ground.find((g) => g.x === t.x && g.y === t.y);
+    if (!pile) return;
+    e.preventDefault();
+    send({ t: "light", id: pile.id });
+  });
 
   canvas.addEventListener("click", (e) => {
     const t = tileAt(e.clientX, e.clientY);
@@ -659,6 +690,20 @@
         ctx.moveTo(px + tw / 2, py + th * 0.22);
         ctx.lineTo(px + tw / 2, py + th * 0.78);
         ctx.stroke();
+      } else if (n.kind === "tree") {
+        // The map already paints a tree on this tile; when it has been
+        // chopped bare, cover it with a stump so it reads as spent.
+        if (!n.ready) {
+          ctx.fillStyle = (n.x + n.y) % 2 ? "#5a8f3c" : "#4f8236";
+          ctx.fillRect(px, py, tw, th);
+          ctx.fillStyle = "#6b3e1a";
+          ctx.beginPath();
+          ctx.ellipse(px + tw / 2, py + th * 0.62, tw * 0.22, th * 0.14, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#4a2a10";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       } else if (n.kind === "fire") {
         ctx.fillStyle = "#5a3a18";
         ctx.fillRect(px + 6, py + th * 0.62, tw - 12, 6);
@@ -668,6 +713,14 @@
         ctx.lineTo(px + tw * 0.28, py + th * 0.7);
         ctx.lineTo(px + tw * 0.72, py + th * 0.7);
         ctx.fill();
+        // A campfire dies down; show what is left of it.
+        if (n.burns > 0) {
+          const life = Math.max(0, Math.min(1, n.burns / 150));
+          ctx.fillStyle = "rgba(40,24,12,0.75)";
+          ctx.fillRect(px + 4, py + th - 6, tw - 8, 3);
+          ctx.fillStyle = "hsl(28,80%,55%)";
+          ctx.fillRect(px + 4, py + th - 6, (tw - 8) * life, 3);
+        }
       }
     }
 

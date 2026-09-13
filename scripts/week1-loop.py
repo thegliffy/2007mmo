@@ -53,7 +53,9 @@ async def main():
     ws, welcome, state = await join(account)
     items = welcome.get("items") or {}
     assert "pulp" in items and items["tart"]["name"] == "Hearth tart", items
-    nodes = {n["kind"]: n for n in state["nodes"]}
+    # The welcome carries every node; state frames carry only the ones that
+    # are not at rest, so a resting millstone would simply not be there.
+    nodes = {n["kind"]: n for n in welcome["nodes"]}
     assert "bush" in nodes and "hazel" in nodes and "mill" in nodes and "fire" in nodes, nodes.keys()
     print("joined", welcome["username"], "nodes", sorted(nodes))
 

@@ -29,6 +29,7 @@ const (
 	cmdAttack
 	cmdUse
 	cmdDrop
+	cmdLight
 	cmdChat
 	cmdLeave
 )
@@ -193,6 +194,14 @@ func (h *Hub) handle(ctx context.Context, c cmd) {
 				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
 			}
 		}
+	case cmdLight:
+		if text, ok := h.World.LightFire(c.playerID, c.id); text != "" {
+			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
+			if ok {
+				h.metrics.AddAction()
+				h.sendJSON(c.client, h.World.Snapshot(c.playerID))
+			}
+		}
 	case cmdDrop:
 		if text, ok := h.World.DropItem(ctx, c.playerID, c.id); text != "" {
 			h.sendJSON(c.client, protocol.Event{T: protocol.MsgEvent, Text: text})
@@ -278,6 +287,7 @@ func (h *Hub) onHello(ctx context.Context, c cmd) {
 		TickMs:   int(h.Tick / time.Millisecond),
 		World:    protocol.WorldName,
 		Map:      h.World.MapInfo(),
+		Nodes:    h.World.AllNodes(),
 		You:      h.World.Snapshot(p.ID).You,
 		Items:    protocol.Catalog(),
 		Skills:   protocol.SkillCatalog(),
@@ -540,6 +550,8 @@ func (c *Client) readLoop() {
 			c.hub.cmds <- cmd{kind: cmdUse, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgDrop:
 			c.hub.cmds <- cmd{kind: cmdDrop, client: c, playerID: c.playerID, id: in.ID}
+		case protocol.MsgLight:
+			c.hub.cmds <- cmd{kind: cmdLight, client: c, playerID: c.playerID, id: in.ID}
 		case protocol.MsgChat:
 			if !c.hub.limits.chat.allow(key) {
 				c.hub.metrics.AddLimited("chat")

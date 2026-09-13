@@ -18,15 +18,22 @@ const (
 	KindHazel = protocol.KindHazel
 	KindMill  = protocol.KindMill
 	KindFire  = protocol.KindFire
+	KindTree  = protocol.KindTree
 
 	forageTicks = 2
 	millTicks   = 2
 	cookTicks   = 3
 	roastTicks  = 2
+	chopTicks   = 3
+	paperTicks  = 3
 	forageXP    = 12
 	millXP      = 10
 	cookXP      = 18
 	roastXP     = 14
+	chopXP      = 15
+	paperXP     = 20
+	treeYield   = 3
+	treeCD      = 20
 	bushYield   = 3
 	bushCD      = 12
 	hazelYield  = 2
@@ -76,7 +83,13 @@ type Node struct {
 	Remaining int
 	Max       int
 	Cooldown  int
+	// Burns counts down for a campfire a player lit. Zero means the node
+	// is part of the map and lives forever.
+	Burns int
 }
+
+// temporary reports whether this node will burn out and vanish.
+func (n *Node) temporary() bool { return n != nil && n.Burns > 0 }
 
 type NPC struct {
 	ID          string
@@ -407,7 +420,17 @@ func (w *World) Tick(ctx context.Context) {
 // bounded: a stalled Postgres must degrade into a skipped node refresh,
 // never into a frozen world.
 func (w *World) tickNodes(ctx context.Context) {
-	for _, n := range w.Nodes {
+	for id, n := range w.Nodes {
+		// A campfire burns down and goes, whatever kind it is. This runs
+		// before the gathering check because a fire is not a gathering
+		// node and would otherwise never be ticked at all.
+		if n.temporary() {
+			n.Burns--
+			if n.Burns <= 0 {
+				delete(w.Nodes, id)
+				continue
+			}
+		}
 		if !gathers(n.Kind) {
 			continue
 		}
@@ -415,7 +438,7 @@ func (w *World) tickNodes(ctx context.Context) {
 			n.Cooldown--
 			if n.Cooldown == 0 && n.Remaining == 0 {
 				n.Remaining = n.Max
-				if w.Store != nil {
+				if w.Store != nil && !n.temporary() {
 					_ = w.Store.UpsertNode(ctx, *recFromNode(n))
 				}
 			}
@@ -511,23 +534,37 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 		return
 	}
 	switch n.Kind {
-	case KindBush, KindHazel:
+	case KindBush, KindHazel, KindTree:
 		if n.Remaining <= 0 || n.Cooldown > 0 {
 			p.ActionNode = ""
 			return
 		}
-		p.Action = protocol.ActionForage
-		p.ActionTicks = forageTicks
+		if n.Kind == KindTree {
+			p.Action = protocol.ActionChop
+			p.ActionTicks = chopTicks
+		} else {
+			p.Action = protocol.ActionForage
+			p.ActionTicks = forageTicks
+		}
 		p.ActionItem = forageItem(n.Kind)
 	case KindMill:
-		if countItem(p.Inv, protocol.ItemBerry) < 1 {
-			w.note(p.ID, "The millstone waits for brambleberries.")
-			p.ActionNode = ""
+		// The millstone crushes berries into pulp and pulps logs into
+		// paper, whichever you are carrying.
+		if countItem(p.Inv, protocol.ItemBerry) >= 1 {
+			p.Action = protocol.ActionMill
+			p.ActionTicks = millTicks
+			p.ActionItem = protocol.ItemBerry
 			return
 		}
-		p.Action = protocol.ActionMill
-		p.ActionTicks = millTicks
-		p.ActionItem = protocol.ItemBerry
+		if countItem(p.Inv, protocol.ItemLog) >= 1 {
+			p.Action = protocol.ActionPaper
+			p.ActionTicks = paperTicks
+			p.ActionItem = protocol.ItemLog
+			return
+		}
+		w.note(p.ID, "The millstone waits for brambleberries, or a log to pulp.")
+		p.ActionNode = ""
+		return
 	case KindFire:
 		if countItem(p.Inv, protocol.ItemPulp) >= 1 {
 			p.Action = protocol.ActionCook
@@ -571,13 +608,17 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 	var leveled bool
 
 	switch action {
-	case protocol.ActionForage:
+	case protocol.ActionForage, protocol.ActionChop:
 		want := forageItem(n.Kind)
 		if want == "" || n.Remaining <= 0 {
 			return
 		}
 		next.Inv = addItem(next.Inv, want, 1)
-		lv, leveled = addSkillXP(next.Skills, protocol.SkillForage, forageXP)
+		if want == protocol.ItemLog {
+			lv, leveled = addSkillXP(next.Skills, protocol.SkillWood, chopXP)
+		} else {
+			lv, leveled = addSkillXP(next.Skills, protocol.SkillForage, forageXP)
+		}
 		nr := *recFromNode(n)
 		nr.Remaining--
 		if nr.Remaining <= 0 {
@@ -585,11 +626,21 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			nr.Cooldown = gatherCD(n.Kind)
 		}
 		nodeRec = &nr
-		if want == protocol.ItemNut {
+		switch want {
+		case protocol.ItemNut:
 			flavor = "A hazel nut comes free of its husk."
-		} else {
+		case protocol.ItemLog:
+			flavor = "The bough comes away. A good log."
+		default:
 			flavor = "You pick a brambleberry, still warm from the sun."
 		}
+	case protocol.ActionPaper:
+		if n.Kind != KindMill || item != protocol.ItemLog || countItem(next.Inv, protocol.ItemLog) < 1 {
+			return
+		}
+		next.Inv = addItem(removeItem(next.Inv, protocol.ItemLog, 1), protocol.ItemPaper, 1)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillWood, paperXP)
+		flavor = "The millstone worries the log to pulp, and the pulp dries to paper."
 	case protocol.ActionMill:
 		if n.Kind != KindMill || countItem(next.Inv, protocol.ItemBerry) < 1 {
 			return
@@ -638,9 +689,12 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 // levelUpLine names the skill that moved, since one action can feed
 // either Foraging or Cooking.
 func levelUpLine(action string, lv int) string {
-	name := "Foraging"
-	if action != protocol.ActionForage {
-		name = "Cooking"
+	name := "Cooking"
+	switch action {
+	case protocol.ActionForage:
+		name = "Foraging"
+	case protocol.ActionChop, protocol.ActionPaper:
+		name = "Woodcutting"
 	}
 	return fmt.Sprintf("(%s is now level %d.)", name, lv)
 }
@@ -743,16 +797,18 @@ func (w *World) Snapshot(id string) protocol.State {
 			HP: n.HP, MaxHP: n.MaxHP, Hostile: n.Hostile,
 		})
 	}
-	nodes := make([]protocol.NodeView, 0, len(w.Nodes))
+	// Only what is not at rest. The client already has every node's
+	// position and kind from the welcome, and with 75 trees on the map
+	// resending all of them 1.67 times a second to every client was most
+	// of the frame for nothing. A campfire is always included: the client
+	// was never told about it, because it did not exist at welcome time.
+	nodes := make([]protocol.NodeView, 0, 8)
 	for _, n := range w.Nodes {
-		nodes = append(nodes, protocol.NodeView{
-			ID:    n.ID,
-			Kind:  n.Kind,
-			X:     n.X,
-			Y:     n.Y,
-			Ready: nodeReady(n),
-			Left:  n.Remaining,
-		})
+		atRest := nodeReady(n) && n.Remaining == n.Max
+		if atRest && !n.temporary() {
+			continue
+		}
+		nodes = append(nodes, w.nodeView(n))
 	}
 	// A reserved pile is left out of everyone else's snapshot entirely,
 	// rather than sent and then refused: nobody should be able to see that
@@ -815,6 +871,30 @@ func (w *World) youView(p *Player) protocol.YouView {
 	}
 }
 
+// nodeView is the full description, used in the welcome and for campfires
+// the client has not seen before.
+func (w *World) nodeView(n *Node) protocol.NodeView {
+	return protocol.NodeView{
+		ID:    n.ID,
+		Kind:  n.Kind,
+		X:     n.X,
+		Y:     n.Y,
+		Ready: nodeReady(n),
+		Left:  n.Remaining,
+		Burns: n.Burns,
+	}
+}
+
+// AllNodes is every node with its position, sent once at join.
+func (w *World) AllNodes() []protocol.NodeView {
+	out := make([]protocol.NodeView, 0, len(w.Nodes))
+	for _, n := range w.Nodes {
+		out = append(out, w.nodeView(n))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
 func nodeReady(n *Node) bool {
 	if n == nil {
 		return false
@@ -826,12 +906,13 @@ func nodeReady(n *Node) bool {
 }
 
 func gathers(kind string) bool {
-	return kind == KindBush || kind == KindHazel
+	return kind == KindBush || kind == KindHazel || kind == KindTree
 }
 
 func channeling(action string) bool {
 	switch action {
-	case protocol.ActionForage, protocol.ActionMill, protocol.ActionCook, protocol.ActionRoast:
+	case protocol.ActionForage, protocol.ActionMill, protocol.ActionCook, protocol.ActionRoast,
+		protocol.ActionChop, protocol.ActionPaper:
 		return true
 	default:
 		return false
@@ -844,14 +925,19 @@ func forageItem(kind string) string {
 		return protocol.ItemBerry
 	case KindHazel:
 		return protocol.ItemNut
+	case KindTree:
+		return protocol.ItemLog
 	default:
 		return ""
 	}
 }
 
 func gatherCD(kind string) int {
-	if kind == KindHazel {
+	switch kind {
+	case KindHazel:
 		return hazelCD
+	case KindTree:
+		return treeCD
 	}
 	return bushCD
 }

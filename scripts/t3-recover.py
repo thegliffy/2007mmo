@@ -23,14 +23,17 @@ async def main():
         msg = json.loads(await asyncio.wait_for(ws.recv(), 8))
         if msg.get("t") in ("welcome", "state"):
             you = msg.get("you") or you
-            nodes = msg.get("nodes") or nodes
+            # Only the welcome lists every node; state frames carry just the
+            # ones that are not at rest.
+            if msg.get("t") == "welcome":
+                nodes = msg.get("nodes") or nodes
             if you and nodes:
                 break
     berries = sum(it["n"] for it in (you or {}).get("inv", []) if it["id"] == "berry")
     tarts = sum(it["n"] for it in (you or {}).get("inv", []) if it["id"] == "tart")
     print(f"account={NAME} berries={berries} tarts={tarts} action={you.get('action') if you else None}")
     if os.environ.get("FORAGE") == "1":
-        bush = next((n for n in nodes if n["kind"] == "bush" and n.get("ready")), None)
+        bush = next((n for n in nodes if n["kind"] == "bush"), None)
         if not bush:
             print("no ready bush")
             await ws.close()
