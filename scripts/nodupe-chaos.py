@@ -83,7 +83,7 @@ async def main():
     await ws.close()
     print("dropped mid-channel")
 
-    ws, _ = await hollow_auth.connect(URL, cookie)
+    ws = await hollow_auth.connect(URL, cookie)
     await ws.send(json.dumps({"t": "hello"}))
     await read_until(ws, "welcome")
     st = await read_until(ws, "state")
@@ -165,7 +165,7 @@ async def main():
 
     await ws.close()
     print("dropped after chest deposit")
-    ws, _ = await hollow_auth.connect(URL, cookie)
+    ws = await hollow_auth.connect(URL, cookie)
     await ws.send(json.dumps({"t": "hello"}))
     welcome = await read_until(ws, "welcome")
     if count(welcome["you"].get("bank"), "berry") != 1:
