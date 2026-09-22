@@ -32,8 +32,10 @@
 // Camera offsets are snapped to integer pixels so tiles and plates
 // cannot drift a half-pixel apart while the chase eases.
 (function (root) {
-  const TW = 96;
-  const TH = 48;
+  // 128×64 is +33% on the old 96×48 diamond: same 2:1 chase,
+  // characters and props just sit closer (early-2000s RuneScape scale).
+  const TW = 128;
+  const TH = 64;
 
   // Cottage 2×2, snapped to the hamlet H-block. idX/idY is the
   // hearth tile (SE cell) — punched out of the house plate for

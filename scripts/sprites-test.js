@@ -24,14 +24,18 @@ assert(spr.tileKey(".", true) === "terrain/scar", "scar grass tile key");
 assert(spr.tileKey("C", false) === "terrain/scar", "copper sits on scar ground");
 
 assert(spr.nodeKey({ kind: "bush", ready: true }) === "gather/bramble", "ready bush");
-assert(spr.nodeKey({ kind: "bush", ready: false }) === "gather/bramble", "spent bush keeps the AD plate");
+assert(spr.nodeKey({ kind: "bush", ready: false }) === "gather/bramble_bare", "spent bush is bare twigs");
 assert(spr.nodeKey({ kind: "hazel", ready: true }) === "gather/hazel", "hazel");
+assert(spr.nodeKey({ kind: "hazel", ready: false }) === "gather/hazel_bare", "spent hazel is bare branches");
 assert(spr.nodeKey({ kind: "mill" }) === "props/millstone", "millstone");
 assert(spr.nodeKey({ kind: "chest" }) === "props/oak_chest", "oak chest");
 assert(spr.nodeKey({ kind: "kiln" }) === "props/kiln", "kiln");
 assert(spr.nodeKey({ kind: "anvil" }) === "props/anvil", "anvil");
 assert(spr.nodeKey({ kind: "copper" }) === "gather/ore_copper", "copper");
+assert(spr.nodeKey({ kind: "copper", ready: false }) === "gather/ore_copper_empty", "spent copper is an empty rock");
 assert(spr.nodeKey({ kind: "tin" }) === "gather/ore_tin", "tin");
+assert(spr.nodeKey({ kind: "tin", ready: false }) === "gather/ore_tin_empty", "spent tin is an empty rock");
+assert(spr.nodeKey({ kind: "bush" }) === "gather/bramble", "missing ready flag stays full");
 assert(spr.nodeKey({ kind: "fire", id: "fire-1" }) === "props/hearth", "hearth is fire-1");
 assert(spr.nodeKey({ kind: "fire", id: "fire-9" }) === "", "campfire stays a canvas pile");
 assert(spr.nodeKey({ kind: "tree", ready: true }) === "", "ready trees stay on the map tile");
@@ -55,12 +59,17 @@ assert(spr.MANIFEST["props/stile"], "stile is in the drop list");
 assert(spr.MANIFEST["props/oak_chest"], "oak chest is in the drop list");
 assert(spr.MANIFEST["buildings/house"], "house is in the drop list");
 assert(spr.MANIFEST["gather/bramble"], "bramble is in the drop list");
+assert(spr.MANIFEST["gather/bramble_bare"], "bare bramble is in the drop list");
+assert(spr.MANIFEST["gather/hazel_bare"], "bare hazel is in the drop list");
+assert(spr.MANIFEST["gather/ore_copper_empty"], "empty copper rock is in the drop list");
+assert(spr.MANIFEST["gather/ore_tin_empty"], "empty tin rock is in the drop list");
+assert(spr.ASSET_REV, "sprite urls are cache-busted");
 assert(spr.MANIFEST["npcs/marta"], "Marta is in the drop list");
 assert(spr.MANIFEST["paperdoll/skin_tan"], "paperdoll skin is in the drop list");
 assert(spr.MANIFEST["terrain/grass"], "grass is in the drop list");
 
 const grass = spr.BOUNDS["terrain/grass"];
-assert(grass && grass.w === 62 && grass.h === 42, "grass opaque seed matches the AD plate");
+assert(grass && grass.w === 58 && grass.h === 40, "grass opaque seed matches the plate");
 const cube = spr.destAtTopDiamond(0, 0, 96, 64, 64, grass);
 assert(Math.abs((cube.x + grass.x * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest left");
 assert(Math.abs((cube.y + grass.y * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest north");
@@ -68,6 +77,10 @@ assert(Math.abs((cube.y + grass.y * (96 / grass.w)) - 0) < 1e-9, "top-diamond de
 const foot = spr.destAtFeet(100, 200, 64, 96, 64, 96, { x: 4, y: 8, w: 40, h: 80 });
 assert(Math.abs(foot.x - (100 - (4 + 20))) < 1e-9, "destAtFeet uses opaque mid-x");
 assert(Math.abs(foot.y - (200 - (8 + 80))) < 1e-9, "destAtFeet uses opaque bottom");
+
+const anchored = spr.destAtFeet(100, 200, 64, 96, 128, 192, { x: 28, y: 20, w: 72, h: 160, ax: 64, ay: 192 });
+assert(Math.abs(anchored.x - (100 - 64 * (64 / 128))) < 1e-9, "destAtFeet ax overrides opaque mid");
+assert(Math.abs(anchored.y - (200 - 192 * (96 / 192))) < 1e-9, "destAtFeet ay overrides opaque bottom");
 
 if (failed) {
   console.error(failed + " failed");

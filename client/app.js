@@ -159,7 +159,10 @@
       // Every node's position and kind, sent once. State frames carry only
       // the ones that are not at rest.
       state.baseNodes = msg.nodes || [];
-      state.nodes = state.baseNodes.map((n) => ({ ...n, ready: true }));
+      // Keep the welcome's ready flag. Forcing true here painted a full
+      // tree/rock/bush over a node the server already said was empty,
+      // until the next state frame arrived.
+      state.nodes = state.baseNodes.map((n) => ({ ...n, ready: n.ready !== false }));
         state.handle = msg.handle || null;
         state.username = msg.username || null;
         if (msg.looksCatalog) state.looksCatalog = msg.looksCatalog;

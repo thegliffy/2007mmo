@@ -7,56 +7,6 @@
   "prop_px": 96,
   "files": [
     {
-      "path": "terrain/grass.png",
-      "kind": "terrain",
-      "draw_px": [
-        64,
-        64
-      ],
-      "notes": "map ground; tile char . P ~ scars",
-      "bytes": 8220
-    },
-    {
-      "path": "terrain/path.png",
-      "kind": "terrain",
-      "draw_px": [
-        64,
-        64
-      ],
-      "notes": "map ground; tile char . P ~ scars",
-      "bytes": 8663
-    },
-    {
-      "path": "terrain/water.png",
-      "kind": "terrain",
-      "draw_px": [
-        64,
-        64
-      ],
-      "notes": "map ground; tile char . P ~ scars",
-      "bytes": 9470
-    },
-    {
-      "path": "terrain/scar.png",
-      "kind": "terrain",
-      "draw_px": [
-        64,
-        64
-      ],
-      "notes": "map ground; tile char . P ~ scars",
-      "bytes": 9230
-    },
-    {
-      "path": "terrain/wall.png",
-      "kind": "terrain",
-      "draw_px": [
-        64,
-        64
-      ],
-      "notes": "map # wall",
-      "bytes": 4253
-    },
-    {
       "path": "buildings/house.png",
       "kind": "building",
       "draw_px": [
@@ -64,97 +14,7 @@
         192
       ],
       "notes": "map H \u2014 footprint ~2x2 tiles",
-      "bytes": 50102
-    },
-    {
-      "path": "props/hearth.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map * hearth/fire",
-      "bytes": 7600
-    },
-    {
-      "path": "props/stile.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "spawn stile",
-      "bytes": 7780
-    },
-    {
-      "path": "props/pedlar_stall.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "Wend pedlar stall",
-      "bytes": 7241
-    },
-    {
-      "path": "props/tree.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map T / gather tree ready",
-      "bytes": 6465
-    },
-    {
-      "path": "props/stump.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "chopped tree spent",
-      "bytes": 6614
-    },
-    {
-      "path": "props/millstone.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map M",
-      "bytes": 16422
-    },
-    {
-      "path": "props/oak_chest.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map E bank chest",
-      "bytes": 16285
-    },
-    {
-      "path": "props/kiln.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map K",
-      "bytes": 17004
-    },
-    {
-      "path": "props/anvil.png",
-      "kind": "prop",
-      "draw_px": [
-        96,
-        96
-      ],
-      "notes": "map A",
-      "bytes": 10692
+      "bytes": 1332
     },
     {
       "path": "gather/bramble.png",
@@ -164,7 +24,17 @@
         96
       ],
       "notes": "node bush",
-      "bytes": 15461
+      "bytes": 629
+    },
+    {
+      "path": "gather/bramble_bare.png",
+      "kind": "gather",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "node bush spent \u2014 bare twigs",
+      "bytes": 658
     },
     {
       "path": "gather/hazel.png",
@@ -174,7 +44,17 @@
         96
       ],
       "notes": "node hazel",
-      "bytes": 15891
+      "bytes": 619
+    },
+    {
+      "path": "gather/hazel_bare.png",
+      "kind": "gather",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "node hazel spent \u2014 bare branches",
+      "bytes": 573
     },
     {
       "path": "gather/ore_copper.png",
@@ -184,7 +64,17 @@
         96
       ],
       "notes": "node copper",
-      "bytes": 17684
+      "bytes": 611
+    },
+    {
+      "path": "gather/ore_copper_empty.png",
+      "kind": "gather",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "node copper spent \u2014 empty rock",
+      "bytes": 603
     },
     {
       "path": "gather/ore_tin.png",
@@ -194,17 +84,17 @@
         96
       ],
       "notes": "node tin",
-      "bytes": 18616
+      "bytes": 599
     },
     {
-      "path": "hostiles/thornkin.png",
-      "kind": "hostile",
+      "path": "gather/ore_tin_empty.png",
+      "kind": "gather",
       "draw_px": [
-        64,
+        96,
         96
       ],
-      "notes": "thornkin",
-      "bytes": 3800
+      "notes": "node tin spent \u2014 empty rock",
+      "bytes": 601
     },
     {
       "path": "hostiles/brambleback.png",
@@ -214,7 +104,17 @@
         96
       ],
       "notes": "brambleback",
-      "bytes": 4251
+      "bytes": 622
+    },
+    {
+      "path": "hostiles/thornkin.png",
+      "kind": "hostile",
+      "draw_px": [
+        64,
+        96
+      ],
+      "notes": "thornkin",
+      "bytes": 517
     },
     {
       "path": "npcs/marta.png",
@@ -224,7 +124,7 @@
         96
       ],
       "notes": "marta",
-      "bytes": 11020
+      "bytes": 574
     },
     {
       "path": "npcs/old_fen.png",
@@ -234,7 +134,7 @@
         96
       ],
       "notes": "old_fen",
-      "bytes": 11601
+      "bytes": 616
     },
     {
       "path": "npcs/pip.png",
@@ -244,7 +144,7 @@
         96
       ],
       "notes": "pip",
-      "bytes": 10274
+      "bytes": 487
     },
     {
       "path": "npcs/wend.png",
@@ -254,7 +154,7 @@
         96
       ],
       "notes": "wend",
-      "bytes": 10638
+      "bytes": 605
     },
     {
       "path": "paperdoll/body_mask.png",
@@ -264,147 +164,47 @@
         192
       ],
       "notes": "tintable body; scale down to 64x96 in-world",
-      "bytes": 15049
-    },
-    {
-      "path": "paperdoll/tunic_mask.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "tintable tunic layer",
-      "bytes": 16122
+      "bytes": 699
     },
     {
       "path": "paperdoll/hair_cropped_mask.png",
       "kind": "paperdoll",
       "draw_px": [
         128,
-        128
+        192
       ],
       "notes": "hair style cropped tintable",
-      "bytes": 8952
-    },
-    {
-      "path": "paperdoll/hair_short_mask.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        128
-      ],
-      "notes": "hair style short tintable",
-      "bytes": 10882
-    },
-    {
-      "path": "paperdoll/hair_tied_mask.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        128
-      ],
-      "notes": "hair style tied tintable",
-      "bytes": 13071
+      "bytes": 333
     },
     {
       "path": "paperdoll/hair_long_mask.png",
       "kind": "paperdoll",
       "draw_px": [
         128,
-        128
+        192
       ],
       "notes": "hair style long tintable",
-      "bytes": 15395
+      "bytes": 510
     },
     {
-      "path": "paperdoll/skin_fair.png",
+      "path": "paperdoll/hair_short_mask.png",
       "kind": "paperdoll",
       "draw_px": [
         128,
         192
       ],
-      "notes": "pre-tinted skin fair",
-      "bytes": 11629
+      "notes": "hair style short tintable",
+      "bytes": 377
     },
     {
-      "path": "paperdoll/skin_tan.png",
+      "path": "paperdoll/hair_tied_mask.png",
       "kind": "paperdoll",
       "draw_px": [
         128,
         192
       ],
-      "notes": "pre-tinted skin tan",
-      "bytes": 10433
-    },
-    {
-      "path": "paperdoll/skin_olive.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        192
-      ],
-      "notes": "pre-tinted skin olive",
-      "bytes": 8816
-    },
-    {
-      "path": "paperdoll/skin_deep.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        192
-      ],
-      "notes": "pre-tinted skin deep",
-      "bytes": 7209
-    },
-    {
-      "path": "paperdoll/tunic_moss.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "pre-tinted tunic moss",
-      "bytes": 8656
-    },
-    {
-      "path": "paperdoll/tunic_clay.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "pre-tinted tunic clay",
-      "bytes": 9955
-    },
-    {
-      "path": "paperdoll/tunic_ink.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "pre-tinted tunic ink",
-      "bytes": 8036
-    },
-    {
-      "path": "paperdoll/tunic_cream.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "pre-tinted tunic cream",
-      "bytes": 12793
-    },
-    {
-      "path": "paperdoll/tunic_berry.png",
-      "kind": "paperdoll",
-      "draw_px": [
-        128,
-        153
-      ],
-      "notes": "pre-tinted tunic berry",
-      "bytes": 8299
+      "notes": "hair style tied tintable",
+      "bytes": 409
     },
     {
       "path": "paperdoll/preview_default_looks.png",
@@ -414,7 +214,267 @@
         96
       ],
       "notes": "sample compose: tan/short/umber/moss",
-      "bytes": 4406
+      "bytes": 525
+    },
+    {
+      "path": "paperdoll/skin_deep.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted skin deep",
+      "bytes": 706
+    },
+    {
+      "path": "paperdoll/skin_fair.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted skin fair",
+      "bytes": 709
+    },
+    {
+      "path": "paperdoll/skin_olive.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted skin olive",
+      "bytes": 709
+    },
+    {
+      "path": "paperdoll/skin_tan.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted skin tan",
+      "bytes": 709
+    },
+    {
+      "path": "paperdoll/tunic_berry.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted tunic berry",
+      "bytes": 399
+    },
+    {
+      "path": "paperdoll/tunic_clay.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted tunic clay",
+      "bytes": 399
+    },
+    {
+      "path": "paperdoll/tunic_cream.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted tunic cream",
+      "bytes": 403
+    },
+    {
+      "path": "paperdoll/tunic_ink.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted tunic ink",
+      "bytes": 397
+    },
+    {
+      "path": "paperdoll/tunic_mask.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "tintable tunic layer",
+      "bytes": 396
+    },
+    {
+      "path": "paperdoll/tunic_moss.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "pre-tinted tunic moss",
+      "bytes": 399
+    },
+    {
+      "path": "props/anvil.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map A",
+      "bytes": 430
+    },
+    {
+      "path": "props/hearth.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map * hearth/fire",
+      "bytes": 622
+    },
+    {
+      "path": "props/house.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "props/house.png",
+      "bytes": 836
+    },
+    {
+      "path": "props/kiln.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map K",
+      "bytes": 555
+    },
+    {
+      "path": "props/millstone.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map M",
+      "bytes": 630
+    },
+    {
+      "path": "props/oak_chest.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map E bank chest",
+      "bytes": 345
+    },
+    {
+      "path": "props/pedlar_stall.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "Wend pedlar stall",
+      "bytes": 568
+    },
+    {
+      "path": "props/rocks.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "props/rocks.png",
+      "bytes": 577
+    },
+    {
+      "path": "props/stile.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "spawn stile",
+      "bytes": 420
+    },
+    {
+      "path": "props/stump.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "chopped tree spent",
+      "bytes": 505
+    },
+    {
+      "path": "props/tree.png",
+      "kind": "prop",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "map T / gather tree ready",
+      "bytes": 612
+    },
+    {
+      "path": "terrain/grass.png",
+      "kind": "terrain",
+      "draw_px": [
+        64,
+        64
+      ],
+      "notes": "map ground; tile char . P ~ scars",
+      "bytes": 425
+    },
+    {
+      "path": "terrain/path.png",
+      "kind": "terrain",
+      "draw_px": [
+        64,
+        64
+      ],
+      "notes": "map ground; tile char . P ~ scars",
+      "bytes": 418
+    },
+    {
+      "path": "terrain/scar.png",
+      "kind": "terrain",
+      "draw_px": [
+        64,
+        64
+      ],
+      "notes": "map ground; tile char . P ~ scars",
+      "bytes": 431
+    },
+    {
+      "path": "terrain/wall.png",
+      "kind": "terrain",
+      "draw_px": [
+        64,
+        64
+      ],
+      "notes": "map # wall",
+      "bytes": 470
+    },
+    {
+      "path": "terrain/water.png",
+      "kind": "terrain",
+      "draw_px": [
+        64,
+        64
+      ],
+      "notes": "map ground; tile char . P ~ scars",
+      "bytes": 425
     }
   ]
 }

@@ -8,7 +8,7 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 | Terrain tiles | **64×64** | Replace procedural fills; map advisory tileSize=32 — scale as needed |
 | Props / gather / buildings | **96×96** (house **192×192**) | Ground diamond of the plate maps onto the tile diamond (see `client/iso.js`) |
 | Characters (NPC/hostile/player) | **64×96** | Opaque bottom-centre (feet) maps to iso project of tile centre |
-| Paperdoll masks | **128×~192** | Tint in client or use pre-tinted `skin_*` / `tunic_*` / hair masks |
+| Paperdoll layers | **128×192** | Shared foot at canvas bottom-centre. Pre-tinted `skin_*` / `tunic_*`; hair masks tint in the client |
 
 ## Map glyph → asset
 | Glyph / node | File |
@@ -25,10 +25,10 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 | `E` chest | `props/oak_chest.png` |
 | `K` kiln | `props/kiln.png` |
 | `A` anvil | `props/anvil.png` |
-| bush / `B` | `gather/bramble.png` |
-| hazel / `Z` | `gather/hazel.png` |
-| copper / `C` | `gather/ore_copper.png` |
-| tin / `N` | `gather/ore_tin.png` |
+| bush / `B` | `gather/bramble.png` (+ `gather/bramble_bare.png` when spent) |
+| hazel / `Z` | `gather/hazel.png` (+ `gather/hazel_bare.png` when spent) |
+| copper / `C` | `gather/ore_copper.png` (+ `gather/ore_copper_empty.png` when spent) |
+| tin / `N` | `gather/ore_tin.png` (+ `gather/ore_tin_empty.png` when spent) |
 | stile | `props/stile.png` |
 | pedlar | `props/pedlar_stall.png` |
 | Marta / Old Fen / Pip / Wend | `npcs/*.png` |
@@ -41,5 +41,5 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 
 See `manifest.json` for full file list. WebP twins sit beside PNGs where generated.
 
-## Style pass (2026-09-13)
-Kyle: ¾ + chase camera; **2007 browser MMO** chunky/flat readability (not modern painterly). See `STYLE_PASS_2007.md`. Terrain is flat procedural for chase-cam; props/NPCs/hostiles re-exported flatter.
+## Style pass (2026-09-22)
+Kyle: ¾ + chase camera, pulled in to a 128×64 tile diamond (+33% vs 96×48). Plates are chunky low-res pixels: flat two-tone fills, one dark outline, short palette. Gather nodes swap to a spent plate when `ready` is false (stump, bare bush, bare hazel, empty copper, empty tin) and back when the node refills. Sprite URLs carry `?v=rs2-zoom1`.

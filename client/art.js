@@ -198,14 +198,30 @@
     }
   }
 
+  // World scale against the old 96×48 diamond. The looks desk passes its
+  // own `s` and does not use this — that canvas is not the chase view.
+  function zoom() {
+    const I = iso();
+    return I && I.TW ? I.TW / 96 : 1;
+  }
+
+  function figPixels(big) {
+    const z = zoom();
+    return {
+      w: Math.round((big ? 80 : 64) * z),
+      h: Math.round((big ? 112 : 96) * z),
+    };
+  }
+
   // Chunky ¾ paperdoll. AD layers win; otherwise a readable 2007-era doll.
-  function drawPaperdoll(ctx, cx, cy, s, looks, highlight) {
+  // `dest` is the world blit size; the looks desk leaves it unset.
+  function drawPaperdoll(ctx, cx, cy, s, looks, highlight, dest) {
     const l = looks || defaultLooks();
     const S = spr();
     const keys = S && S.paperdollKeys(l);
     const u = s / 10;
-    const fw = 56 * u;
-    const fh = 84 * u;
+    const fw = dest ? dest.w : 56 * u;
+    const fh = dest ? dest.h : 84 * u;
     if (S && keys) {
       const skinLayer = S.ready(keys.skin) ? keys.skin : keys.bodyMask;
       const tunicLayer = S.ready(keys.tunic) ? keys.tunic : keys.tunicMask;
@@ -333,24 +349,26 @@
   }
 
   function spriteBox(kind, extra) {
+    const z = zoom();
+    const s = (w, h) => ({ w: w * z, h: h * z });
     switch (kind) {
-      case "tree": return { w: 56, h: 88 };
-      case "stump": return { w: 40, h: 28 };
+      case "tree": return s(56, 88);
+      case "stump": return s(40, 28);
       case "bramble":
-      case "hazel": return { w: 48, h: 52 };
-      case "millstone": return { w: 52, h: 48 };
-      case "oak_chest": return { w: 48, h: 44 };
-      case "kiln": return { w: 52, h: 72 };
-      case "anvil": return { w: 48, h: 40 };
-      case "hearth": return { w: 52, h: 64 };
-      case "stile": return { w: 72, h: 56 };
-      case "house": return { w: 192, h: 192 };
-      case "pedlar_stall": return { w: 56, h: 64 };
-      case "ore": return { w: 44, h: 36 };
-      case "wall": return { w: 56, h: 40 };
-      case "figure": return { w: 36, h: 72 };
-      case "hostile": return { w: extra && extra.big ? 48 : 36, h: extra && extra.big ? 80 : 72 };
-      default: return { w: 32, h: 32 };
+      case "hazel": return s(48, 52);
+      case "millstone": return s(52, 48);
+      case "oak_chest": return s(48, 44);
+      case "kiln": return s(52, 72);
+      case "anvil": return s(48, 40);
+      case "hearth": return s(52, 64);
+      case "stile": return s(72, 56);
+      case "house": return s(192, 192);
+      case "pedlar_stall": return s(56, 64);
+      case "ore": return s(44, 36);
+      case "wall": return s(56, 40);
+      case "figure": return s(36, 72);
+      case "hostile": return s(extra && extra.big ? 48 : 36, extra && extra.big ? 80 : 72);
+      default: return s(32, 32);
     }
   }
 
@@ -444,7 +462,7 @@
       const row = m.tiles[y] || "";
       for (let x = 0; x < m.w; x++) {
         const feet = I.tileFeet(x, y, cam);
-        if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, 110)) continue;
+        if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, Math.round(110 * zoom()))) continue;
         ground.push({ x, y, g: row[x] || "." });
       }
     }
@@ -490,7 +508,7 @@
 
     for (const s of sprites) {
       const feet = I.tileFeet(s.x, s.y, cam);
-      if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, 140)) continue;
+      if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, Math.round(180 * zoom()))) continue;
 
       if (s.kind === "wall") {
         if (!(S && S.ready("terrain/wall"))) raiseWall(ctx, s.x, s.y, cam);
@@ -654,31 +672,34 @@
         const f = s.fig;
         const e = f.e;
         const hostile = f.kind === "npc" && e.hostile;
+        const big = hostile && /brambleback/i.test(e.name || "");
+        const sz = figPixels(big);
         if (e.id && e.id === targetId) {
           ctx.strokeStyle = "rgba(190,50,30,0.85)";
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.ellipse(feet.x, feet.y + 2, 14, 6, 0, 0, Math.PI * 2);
+          ctx.ellipse(feet.x, feet.y + 2, 14 * zoom(), 6 * zoom(), 0, 0, Math.PI * 2);
           ctx.stroke();
         }
         const nkey = S && S.npcKey(e);
-        const drewNpc = nkey && S.blitFeet(ctx, nkey, feet.x, feet.y, 64, 96);
+        const drewNpc = nkey && S.blitFeet(ctx, nkey, feet.x, feet.y, sz.w, sz.h);
         if (!drewNpc) {
-          if (hostile) drawHostileFallback(ctx, feet.x, feet.y, 14, e.name);
-          else drawPaperdoll(ctx, feet.x, feet.y, 14, looksOf(e), f.kind === "you");
+          if (hostile) drawHostileFallback(ctx, feet.x, feet.y, 14 * zoom(), e.name);
+          else drawPaperdoll(ctx, feet.x, feet.y, 14 * zoom(), looksOf(e), f.kind === "you", sz);
         } else if (f.kind === "you") {
           ctx.strokeStyle = "rgba(255,244,176,0.7)";
           ctx.beginPath();
-          ctx.ellipse(feet.x, feet.y + 2, 12, 4.4, 0, 0, Math.PI * 2);
+          ctx.ellipse(feet.x, feet.y + 2, 12 * zoom(), 4.4 * zoom(), 0, 0, Math.PI * 2);
           ctx.stroke();
         }
         const ink = f.kind === "you" ? "#fff4b0" : hostile ? "#f0c8a0" : "#f3e2c7";
-        drawNameplate(ctx, e.name || "?", feet.x, feet.y - 52, ink);
+        const plateY = feet.y - sz.h - Math.round(4 * zoom());
+        drawNameplate(ctx, e.name || "?", feet.x, plateY, ink);
         if (e.maxHp > 0 && (f.kind === "you" || hostile)) {
           const hp = e.hp == null ? e.maxHp : e.hp;
-          const bw = 22;
+          const bw = Math.round(22 * zoom());
           const bx = feet.x - bw / 2;
-          const by = feet.y - 62;
+          const by = plateY - Math.round(10 * zoom());
           ctx.fillStyle = "#2a160c";
           ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
           ctx.fillStyle = hostile ? "#c44" : "#6a3";
