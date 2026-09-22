@@ -21,7 +21,7 @@ function near(a, b, eps, msg) {
   assert(Math.abs(a - b) < (eps == null ? 1e-9 : eps), msg + " (" + a + " vs " + b + ")");
 }
 
-assert(iso.TW === 96 && iso.TH === 48, "2:1 diamond is 96×48");
+assert(iso.TW === 128 && iso.TH === 64, "2:1 diamond is 128×64 (+33% vs 96×48)");
 
 const origin = iso.project(0, 0);
 assert(origin.x === 0 && origin.y === 0, "origin projects to 0,0");

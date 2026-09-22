@@ -21,9 +21,13 @@
     { key: "props/tree", src: "assets/props/tree.png" },
     { key: "props/stump", src: "assets/props/stump.png" },
     { key: "gather/bramble", src: "assets/gather/bramble.png", fallback: "assets/props/bush.png" },
+    { key: "gather/bramble_bare", src: "assets/gather/bramble_bare.png" },
     { key: "gather/hazel", src: "assets/gather/hazel.png", fallback: "assets/props/hazel.png" },
+    { key: "gather/hazel_bare", src: "assets/gather/hazel_bare.png" },
     { key: "gather/ore_copper", src: "assets/gather/ore_copper.png", fallback: "assets/props/copper.png" },
+    { key: "gather/ore_copper_empty", src: "assets/gather/ore_copper_empty.png" },
     { key: "gather/ore_tin", src: "assets/gather/ore_tin.png", fallback: "assets/props/tin.png" },
+    { key: "gather/ore_tin_empty", src: "assets/gather/ore_tin_empty.png" },
     { key: "hostiles/thornkin", src: "assets/hostiles/thornkin.png" },
     { key: "hostiles/brambleback", src: "assets/hostiles/brambleback.png" },
     { key: "npcs/marta", src: "assets/npcs/marta.png" },
@@ -51,6 +55,9 @@
   const MANIFEST = {};
   PACK.forEach((p) => { MANIFEST[p.key] = p.src; });
 
+  // Bump when plates change so a cached sprite sheet cannot outlive the pack.
+  const ASSET_REV = "rs2-zoom1";
+
   const images = {};
   const measured = {};
 
@@ -58,44 +65,63 @@
   // paint (and node tests) plant plates before a canvas measure runs.
   // load() overwrites these from the decoded bitmap when a document exists.
   const BOUNDS = {
-    "terrain/grass": { x: 1, y: 11, w: 62, h: 42 },
-    "terrain/path": { x: 1, y: 11, w: 61, h: 41 },
-    "terrain/water": { x: 1, y: 11, w: 62, h: 42 },
-    "terrain/scar": { x: 1, y: 10, w: 62, h: 44 },
-    "terrain/wall": { x: 1, y: 6, w: 61, h: 52 },
-    "buildings/house": { x: 2, y: 18, w: 188, h: 154 },
-    "props/house": { x: 1, y: 9, w: 94, h: 77 },
-    "props/hearth": { x: 2, y: 1, w: 92, h: 93 },
-    "props/stile": { x: 1, y: 12, w: 93, h: 71 },
-    "props/millstone": { x: 1, y: 2, w: 93, h: 91 },
-    "props/oak_chest": { x: 1, y: 6, w: 94, h: 83 },
-    "props/kiln": { x: 1, y: 7, w: 94, h: 82 },
-    "props/anvil": { x: 1, y: 12, w: 93, h: 71 },
-    "props/pedlar_stall": { x: 7, y: 1, w: 80, h: 94 },
-    "props/tree": { x: 8, y: 1, w: 80, h: 94 },
-    "props/stump": { x: 1, y: 7, w: 94, h: 82 },
-    "gather/bramble": { x: 1, y: 11, w: 94, h: 74 },
-    "gather/hazel": { x: 1, y: 12, w: 94, h: 73 },
-    "gather/ore_copper": { x: 1, y: 9, w: 94, h: 78 },
-    "gather/ore_tin": { x: 3, y: 11, w: 92, h: 74 },
-    "hostiles/thornkin": { x: 1, y: 28, w: 42, h: 39 },
-    "hostiles/brambleback": { x: 1, y: 15, w: 62, h: 65 },
-    "npcs/marta": { x: 3, y: 1, w: 58, h: 93 },
-    "npcs/old_fen": { x: 1, y: 7, w: 62, h: 81 },
-    "npcs/pip": { x: 2, y: 1, w: 59, h: 94 },
-    "npcs/wend": { x: 1, y: 9, w: 62, h: 76 },
-    "paperdoll/skin_tan": { x: 24, y: 1, w: 80, h: 190 },
-    "paperdoll/skin_fair": { x: 24, y: 1, w: 80, h: 190 },
-    "paperdoll/skin_olive": { x: 24, y: 1, w: 80, h: 190 },
-    "paperdoll/skin_deep": { x: 24, y: 1, w: 80, h: 190 },
-    "paperdoll/body_mask": { x: 24, y: 1, w: 80, h: 190 },
+    "terrain/grass": { x: 4, y: 10, w: 58, h: 40 },
+    "terrain/path": { x: 4, y: 10, w: 58, h: 40 },
+    "terrain/water": { x: 4, y: 10, w: 58, h: 40 },
+    "terrain/scar": { x: 4, y: 10, w: 58, h: 40 },
+    "terrain/wall": { x: 4, y: 10, w: 58, h: 46 },
+    "buildings/house": { x: 20, y: 20, w: 156, h: 156 },
+    "props/house": { x: 9, y: 9, w: 81, h: 81 },
+    "props/hearth": { x: 15, y: 27, w: 69, h: 69 },
+    "props/stile": { x: 15, y: 33, w: 66, h: 63 },
+    "props/millstone": { x: 12, y: 27, w: 75, h: 69 },
+    "props/oak_chest": { x: 15, y: 39, w: 69, h: 54 },
+    "props/kiln": { x: 15, y: 15, w: 69, h: 75 },
+    "props/anvil": { x: 15, y: 39, w: 69, h: 57 },
+    "props/pedlar_stall": { x: 9, y: 15, w: 81, h: 81 },
+    "props/tree": { x: 6, y: 0, w: 84, h: 93 },
+    "props/stump": { x: 6, y: 48, w: 87, h: 48 },
+    "gather/bramble": { x: 3, y: 21, w: 90, h: 75 },
+    "gather/bramble_bare": { x: 6, y: 21, w: 84, h: 75 },
+    "gather/hazel": { x: 12, y: 6, w: 75, h: 90 },
+    "gather/hazel_bare": { x: 12, y: 12, w: 75, h: 84 },
+    "gather/ore_copper": { x: 9, y: 30, w: 81, h: 63 },
+    "gather/ore_copper_empty": { x: 9, y: 30, w: 81, h: 63 },
+    "gather/ore_tin": { x: 9, y: 30, w: 81, h: 63 },
+    "gather/ore_tin_empty": { x: 9, y: 30, w: 81, h: 63 },
+    "hostiles/thornkin": { x: 14, y: 34, w: 38, h: 58 },
+    "hostiles/brambleback": { x: 4, y: 22, w: 60, h: 72 },
+    "npcs/marta": { x: 14, y: 4, w: 36, h: 86 },
+    "npcs/old_fen": { x: 14, y: 4, w: 42, h: 88 },
+    "npcs/pip": { x: 18, y: 28, w: 28, h: 64 },
+    "npcs/wend": { x: 14, y: 4, w: 42, h: 86 },
+    "paperdoll/skin_tan": { x: 28, y: 20, w: 72, h: 160 },
+    "paperdoll/skin_fair": { x: 28, y: 20, w: 72, h: 160 },
+    "paperdoll/skin_olive": { x: 28, y: 20, w: 72, h: 160 },
+    "paperdoll/skin_deep": { x: 28, y: 20, w: 72, h: 160 },
+    "paperdoll/body_mask": { x: 28, y: 20, w: 72, h: 160 },
   };
 
+  // Paperdoll layers share one 128×192 canvas. The foot is the canvas
+  // bottom-centre, not the opaque bottom — hair would otherwise sit on the
+  // boots. Preview is a finished 64×96 plate and keeps the opaque foot.
+  const DOLL_AX = 64;
+  const DOLL_AY = 192;
+
   function boundsOf(key, imgW, imgH) {
-    const b = measured[key] || BOUNDS[key];
-    if (b && b.w > 0 && b.h > 0) return b;
-    const w = imgW || 0, h = imgH || 0;
-    return { x: 0, y: 0, w: w, h: h };
+    const seed = BOUNDS[key];
+    const b = measured[key] || seed;
+    const base = (b && b.w > 0 && b.h > 0)
+      ? { x: b.x, y: b.y, w: b.w, h: b.h }
+      : { x: 0, y: 0, w: imgW || 0, h: imgH || 0 };
+    if (key && key.indexOf("paperdoll/") === 0 && key.indexOf("preview") < 0) {
+      base.ax = DOLL_AX;
+      base.ay = DOLL_AY;
+    } else if (seed && seed.ax != null) {
+      base.ax = seed.ax;
+      base.ay = seed.ay;
+    }
+    return base;
   }
 
   function measureImage(img) {
@@ -135,7 +161,7 @@
       if (fallback && fallback !== src) loadOne(key, fallback, null);
       else images[key] = null;
     };
-    img.src = src;
+    img.src = src + (src.indexOf("?") >= 0 ? "&" : "?") + "v=" + ASSET_REV;
   }
 
   function load() {
@@ -192,9 +218,11 @@
     const iw = imgW || destW, ih = imgH || destH;
     const sx = destW / Math.max(1, iw);
     const sy = destH / Math.max(1, ih);
+    const ax = b.ax != null ? b.ax : b.x + b.w / 2;
+    const ay = b.ay != null ? b.ay : b.y + b.h;
     return {
-      x: feetX - (b.x + b.w / 2) * sx,
-      y: feetY - (b.y + b.h) * sy,
+      x: feetX - ax * sx,
+      y: feetY - ay * sy,
       w: destW,
       h: destH,
     };
@@ -242,15 +270,17 @@
 
   function nodeKey(n) {
     if (!n) return "";
-    if (n.kind === "bush") return "gather/bramble";
-    if (n.kind === "hazel") return "gather/hazel";
-    if (n.kind === "tree") return n.ready ? "" : "props/stump";
+    // Only an explicit not-ready flag swaps the plate. A missing flag stays full.
+    const down = n.ready === false;
+    if (n.kind === "bush") return down ? "gather/bramble_bare" : "gather/bramble";
+    if (n.kind === "hazel") return down ? "gather/hazel_bare" : "gather/hazel";
+    if (n.kind === "tree") return down ? "props/stump" : "";
     if (n.kind === "mill") return "props/millstone";
     if (n.kind === "chest") return "props/oak_chest";
     if (n.kind === "kiln") return "props/kiln";
     if (n.kind === "anvil") return "props/anvil";
-    if (n.kind === "copper") return "gather/ore_copper";
-    if (n.kind === "tin") return "gather/ore_tin";
+    if (n.kind === "copper") return down ? "gather/ore_copper_empty" : "gather/ore_copper";
+    if (n.kind === "tin") return down ? "gather/ore_tin_empty" : "gather/ore_tin";
     if (n.kind === "fire") return n.id === "fire-1" ? "props/hearth" : "";
     return "";
   }
@@ -289,6 +319,7 @@
     PACK,
     MANIFEST,
     BOUNDS,
+    ASSET_REV,
     load,
     ready,
     boundsOf,
