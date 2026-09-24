@@ -1,59 +1,76 @@
 package world
 
-// Original-IP hamlet, southern briar-woods, and the eastern scars.
-// No third-party tilesets or borrowed monster names.
+// Original-IP hamlet, southern briar-woods, the eastern scars, and the
+// reedwater beyond them. No third-party tilesets or borrowed monster names.
 //
 //	# wall   T tree   ~ water   P path
 //	. grass  H house  * hearth  B bramble
 //	Z hazel  M millstone
 //	C copper N tin    K kiln    A anvil
 //	E oak chest (personal bank, by the stile)
+//	F fishing spot (reedwater; the client paints it as water)
 //
 // Everything a player cannot stand on blocks: walls, trees, water, and
-// the work nodes themselves. You reach a bramble or the hearth from an
-// adjacent tile, not by standing inside it.
+// the work nodes themselves. You reach a bramble, a fishing spot, or the
+// hearth from an adjacent tile, not by standing inside it.
 //
 // House tiles ('H') stay walkable on purpose: the hearth sits inside the
 // house, and blocking them would seal it off entirely. See
 // TestEveryNodeIsReachable.
 //
-// Columns 0–26 keep every Week 1 / Week 2 coordinate (hearth, mill,
-// bramble, hazel, stile spawn, southern clearing). Column 27 was the
-// east wall; it is open now, and the map runs out to 40 so the scars
-// have room to be a place, not a strip.
+// Columns 0–38 keep every Week 1 / Week 2 / scars coordinate (hearth,
+// mill, bramble, hazel, stile spawn, southern clearing, veins, kiln,
+// anvil). Column 39 was the east wall. Three gates — rows 4, 7, and 13,
+// where the grass already reached the wall — open onto the reedwater,
+// which runs to x=59 and y=45. The briar-woods stay walled off from
+// that shore.
 var mapRows = []string{
-	"########################################",
-	"#TTT....PPPP....TTTTTTT...TTTTT.TTTTTTT#",
-	"#T......P..P......B.B.T..T..T.C..C.TTTT#",
-	"#.......P..P......B.B..............C..T#",
-	"#..HHH..PPPP...............PPPP.C......#",
-	"#..H*H..P...M.........~~~..P..P..C.C..T#",
-	"#..HHH..P.....~~~.....~~~..P.KP.......T#",
-	"#.......P.....~~~..........P..P.N.N....#",
-	"#..TTT.EPPPPPPPPP....TTT...PPPPP....N.T#",
-	"#.......P............T.T.....A.P.N....T#",
-	"#.......P....~~~...............P...N..T#",
-	"#TTT....P....~~~..TTT......TT..PPP....T#",
-	"#T.ZZ...P..........T.......T.....P.C.TT#",
-	"#.......P....................N....P....#",
-	"#TTTT...P.........TTTTT....TTT...P.TTTT#",
-	"#.......P........................P.....#",
-	"#.......PPPP................TTT.PP.TT.T#",
-	"#..TTT..P..P.....TTTT.......T...P...C.T#",
-	"#.......P..P.....T..T.........C.P.N...T#",
-	"#.......PPPP.......P..............P...T#",
-	"#..TTT.............P...TTT.TTT..PPP.TTT#",
-	"#..............PPPPP.................P.#",
-	"#..TTT.........P...P...TT..TT.N...P.C.T#",
-	"#..............P.~~~.P.............P..T#",
-	"#..T...........P.~~~.P..T...T.C...P.N.T#",
-	"#..............PPPPPPP..........PPP....#",
-	"#.....TTT......P.....P.TTT.TTT..P...TTT#",
-	"#..............P.................P.C..T#",
-	"#.....TTT......P.....P.TTT.TT.N.P...N.T#",
-	"#..............PPPPPPP..........PPP....#",
-	"#..T...........P.....P..T..T.C......C.T#",
-	"########################################",
+	"############################################################",
+	"#TTT....PPPP....TTTTTTT...TTTTT.TTTTTTT#..TTT......~~~~~~~~#",
+	"#T......P..P......B.B.T..T..T.C..C.TTTT#....T......~~~~~~~~#",
+	"#.......P..P......B.B..............C..T#..PPPP.....~~~~~~~~#",
+	"#..HHH..PPPP...............PPPP.C......PPPP........~~~~~~~~#",
+	"#..H*H..P...M.........~~~..P..P..C.C..T#..P..TTT...~~~~~~~~#",
+	"#..HHH..P.....~~~.....~~~..P.KP.......T#..P........~~~~~~~~#",
+	"#.......P.....~~~..........P..P.N.N....P.PPPPP.....~~~~~~~~#",
+	"#..TTT.EPPPPPPPPP....TTT...PPPPP....N.T#.....TTT..F~~~~~~~~#",
+	"#.......P............T.T.....A.P.N....T#..........P~~~~~~~~#",
+	"#.......P....~~~...............P...N..T#..TTT....P.~~~~~~~~#",
+	"#TTT....P....~~~..TTT......TT..PPP....T#.........P..~~~~~~~#",
+	"#T.ZZ...P..........T.......T.....P.C.TT#......PPPP.F~~~~~~~#",
+	"#.......P....................N....P....PP.....P....~~~~~~~~#",
+	"#TTTT...P.........TTTTT....TTT...P.TTTT#..TTT.P.TTT~~~~~~~~#",
+	"#.......P........................P.....#......PPPP.~~~~~~~~#",
+	"#.......PPPP................TTT.PP.TT.T#....PPPP.~~~~~~~~~~#",
+	"#..TTT..P..P.....TTTT.......T...P...C.T#..TTT..P.F~~~~~~~~~#",
+	"#.......P..P.....T..T.........C.P.N...T#.......P..~~~~~~~~~#",
+	"#.......PPPP.......P..............P...T#....PPPP.~~~~~~~~~~#",
+	"#..TTT.............P...TTT.TTT..PPP.TTT#..TTT..P.~~~~~~~~~~#",
+	"#..............PPPPP.................P.#.......P.F~~~~~~~~~#",
+	"#..TTT.........P...P...TT..TT.N...P.C.T#..TTT..PP~~~~~~~~~~#",
+	"#..............P.~~~.P.............P..T#.......P.PPF~~~~~~~#",
+	"#..T...........P.~~~.P..T...T.C...P.N.T#..........P~~~~~~~~#",
+	"#..............PPPPPPP..........PPP....#..TTT....P.~~~~~~~~#",
+	"#.....TTT......P.....P.TTT.TTT..P...TTT#.......PP.F~~~~~~~~#",
+	"#..............P.................P.C..T#....PPPP.~~~~~~~~~~#",
+	"#.....TTT......P.....P.TTT.TT.N.P...N.T#..TTT..P.~~~~~~~~~~#",
+	"#..............PPPPPPP..........PPP....#.......P.F~~~~~~~~~#",
+	"#..T...........P.....P..T..T.C......C.T#....PPPP.~~~~~~~~~~#",
+	"########################################.......P.~~~~~~~~~~#",
+	"########################################..TTT..P.F~~~~~~~~~#",
+	"########################################.......P..~~~~~~~~~#",
+	"########################################....PPPP.F~~~~~~~~~#",
+	"########################################..TTT..P.~~~~~~~~~~#",
+	"########################################.......P.~~~~~~~~~~#",
+	"########################################..TTT..P.F~~~~~~~~~#",
+	"########################################.......PP~~~~~~~~~~#",
+	"########################################..TTT..P.~~~~~~~~~~#",
+	"########################################.......P.F~~~~~~~~~#",
+	"########################################....PPPP.~~~~~~~~~~#",
+	"########################################..TTT.....~~~~~~~~~#",
+	"########################################..........~~~~~~~~~#",
+	"########################################..TTT.....~~~~~~~~~#",
+	"############################################################",
 }
 
 const tileSize = 32
@@ -81,7 +98,7 @@ func parseMap() (w, h int, tiles [][]byte, block [][]bool) {
 func seedNodes() []*Node {
 	var out []*Node
 	bush, hazel, mill, tree := 0, 0, 0, 0
-	copper, tin, kiln, anvil, chest := 0, 0, 0, 0, 0
+	copper, tin, kiln, anvil, chest, fish := 0, 0, 0, 0, 0, 0
 	for y, row := range mapRows {
 		for x, c := range row {
 			switch c {
@@ -172,6 +189,21 @@ func seedNodes() []*Node {
 					Remaining: 1,
 					Max:       1,
 				})
+			case 'F':
+				// Same rule as trees: a spot you can never stand beside
+				// is a ripple, not a node.
+				if !hasWalkableNeighbour(x, y) {
+					continue
+				}
+				fish++
+				out = append(out, &Node{
+					ID:        "fish-" + itoa(fish),
+					Kind:      KindFish,
+					X:         x,
+					Y:         y,
+					Remaining: fishYield,
+					Max:       fishYield,
+				})
 			case '*':
 				out = append(out, &Node{
 					ID:        "fire-1",
@@ -253,7 +285,7 @@ func seedNPCs() []*NPC {
 // walkable so the hearth is not sealed inside its own walls.
 func tileBlocks(c byte) bool {
 	switch c {
-	case '#', 'T', '~', 'B', 'Z', 'M', '*', 'C', 'N', 'K', 'A', 'E':
+	case '#', 'T', '~', 'B', 'Z', 'M', '*', 'C', 'N', 'K', 'A', 'E', 'F':
 		return true
 	}
 	return false

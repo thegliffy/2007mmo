@@ -24,6 +24,7 @@ const (
 	KindKiln   = protocol.KindKiln
 	KindAnvil  = protocol.KindAnvil
 	KindChest  = protocol.KindChest
+	KindFish   = protocol.KindFish
 
 	forageTicks = 2
 	millTicks   = 2
@@ -34,6 +35,8 @@ const (
 	mineTicks   = 3
 	smeltTicks  = 3
 	forgeTicks  = 3
+	fishTicks   = 3
+	fryTicks    = 3
 	forageXP    = 12
 	millXP      = 10
 	cookXP      = 18
@@ -43,6 +46,8 @@ const (
 	mineXP      = 16
 	smeltXP     = 22
 	forgeXP     = 28
+	fishXP      = 14
+	fryXP       = 16
 	treeYield   = 3
 	treeCD      = 20
 	oreYield    = 3
@@ -51,6 +56,8 @@ const (
 	bushCD      = 12
 	hazelYield  = 2
 	hazelCD     = 14
+	fishYield   = 3
+	fishCD      = 16
 	maxInvStack = 99
 	spawnX      = 8
 	spawnY      = 8
@@ -571,7 +578,7 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 		return
 	}
 	switch n.Kind {
-	case KindBush, KindHazel, KindTree, KindCopper, KindTin:
+	case KindBush, KindHazel, KindTree, KindCopper, KindTin, KindFish:
 		if n.Remaining <= 0 || n.Cooldown > 0 {
 			p.ActionNode = ""
 			return
@@ -592,6 +599,14 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			}
 			p.Action = protocol.ActionMine
 			p.ActionTicks = mineTicks
+		} else if n.Kind == KindFish {
+			if !wielding(p, "fish") {
+				w.note(p.ID, "You would need a rod in hand for that.")
+				p.ActionNode = ""
+				return
+			}
+			p.Action = protocol.ActionFish
+			p.ActionTicks = fishTicks
 		} else {
 			p.Action = protocol.ActionForage
 			p.ActionTicks = forageTicks
@@ -656,10 +671,16 @@ func (w *World) tickAction(ctx context.Context, p *Player) {
 			p.ActionItem = protocol.ItemNut
 			return
 		}
+		if countItem(p.Inv, protocol.ItemPerch) >= 1 {
+			p.Action = protocol.ActionFry
+			p.ActionTicks = fryTicks
+			p.ActionItem = protocol.ItemPerch
+			return
+		}
 		if countItem(p.Inv, protocol.ItemBerry) >= 1 {
 			w.note(p.ID, "The hearth wants pulp. Crush the berries at the millstone first.")
 		} else {
-			w.note(p.ID, "The hearth is quiet. Bring pulp or a hazel nut.")
+			w.note(p.ID, "The hearth is quiet. Bring pulp, a hazel nut, or a perch.")
 		}
 		p.ActionNode = ""
 	default:
@@ -686,7 +707,7 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 	var leveled bool
 
 	switch action {
-	case protocol.ActionForage, protocol.ActionChop, protocol.ActionMine:
+	case protocol.ActionForage, protocol.ActionChop, protocol.ActionMine, protocol.ActionFish:
 		want := forageItem(n.Kind)
 		if want == "" || n.Remaining <= 0 {
 			return
@@ -702,6 +723,8 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			lv, leveled = addSkillXP(next.Skills, protocol.SkillWood, chopXP)
 		case want == protocol.ItemCopper || want == protocol.ItemTin:
 			lv, leveled = addSkillXP(next.Skills, protocol.SkillMine, mineXP)
+		case want == protocol.ItemPerch:
+			lv, leveled = addSkillXP(next.Skills, protocol.SkillFish, fishXP)
 		default:
 			lv, leveled = addSkillXP(next.Skills, protocol.SkillForage, forageXP)
 		}
@@ -721,6 +744,8 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 			flavor = "The vein gives up a lump of copper, still cold."
 		case protocol.ItemTin:
 			flavor = "A pale chip of tin comes free of the rock."
+		case protocol.ItemPerch:
+			flavor = "A reed perch comes up, silver and wriggling."
 		default:
 			flavor = "You pick a brambleberry, still warm from the sun."
 		}
@@ -752,6 +777,13 @@ func (w *World) completeAction(ctx context.Context, p *Player) {
 		next.Inv = addItem(removeItem(next.Inv, protocol.ItemNut, 1), protocol.ItemRoast, 1)
 		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, roastXP)
 		flavor = "The hazel nut pops. A little smoke, a little sweetness."
+	case protocol.ActionFry:
+		if n.Kind != KindFire || item != protocol.ItemPerch || countItem(next.Inv, protocol.ItemPerch) < 1 {
+			return
+		}
+		next.Inv = addItem(removeItem(next.Inv, protocol.ItemPerch, 1), protocol.ItemFried, 1)
+		lv, leveled = addSkillXP(next.Skills, protocol.SkillCook, fryXP)
+		flavor = "The hearth takes the perch. The skin crackles."
 	case protocol.ActionSmelt:
 		if n.Kind != KindKiln || countItem(next.Inv, protocol.ItemCopper) < 1 || countItem(next.Inv, protocol.ItemTin) < 1 {
 			return
@@ -816,6 +848,8 @@ func levelUpLine(action string, lv int) string {
 		name = "Mining"
 	case protocol.ActionSmelt, protocol.ActionForge:
 		name = "Smithing"
+	case protocol.ActionFish:
+		name = "Fishing"
 	}
 	return fmt.Sprintf("(%s is now level %d.)", name, lv)
 }
@@ -842,6 +876,13 @@ func (w *World) UseItem(ctx context.Context, id, itemID string) (string, bool) {
 		return "The pulp wants a hearth, not a mouthful.", false
 	case protocol.ItemNut:
 		return "Too hard to chew raw. The hearth would be kinder.", false
+	case protocol.ItemPerch:
+		return "Raw perch is all bones and river-mud. The hearth would be kinder.", false
+	case protocol.ItemFried:
+		if countItem(p.Inv, protocol.ItemFried) < 1 {
+			return "You do not have a fried perch.", false
+		}
+		return w.commitUse(ctx, p, protocol.ItemFried, "You eat a fried perch. It tastes of smoke and the river.")
 	case protocol.ItemCopper, protocol.ItemTin:
 		return "Ore wants the kiln, not a pocket to rattle in.", false
 	case protocol.ItemBar:
@@ -1049,14 +1090,14 @@ func nodeReady(n *Node) bool {
 
 func gathers(kind string) bool {
 	return kind == KindBush || kind == KindHazel || kind == KindTree ||
-		kind == KindCopper || kind == KindTin
+		kind == KindCopper || kind == KindTin || kind == KindFish
 }
 
 func channeling(action string) bool {
 	switch action {
 	case protocol.ActionForage, protocol.ActionMill, protocol.ActionCook, protocol.ActionRoast,
 		protocol.ActionChop, protocol.ActionPaper, protocol.ActionMine, protocol.ActionSmelt,
-		protocol.ActionForge:
+		protocol.ActionForge, protocol.ActionFish, protocol.ActionFry:
 		return true
 	default:
 		return false
@@ -1075,6 +1116,8 @@ func forageItem(kind string) string {
 		return protocol.ItemCopper
 	case KindTin:
 		return protocol.ItemTin
+	case KindFish:
+		return protocol.ItemPerch
 	default:
 		return ""
 	}
@@ -1088,6 +1131,8 @@ func gatherCD(kind string) int {
 		return treeCD
 	case KindCopper, KindTin:
 		return oreCD
+	case KindFish:
+		return fishCD
 	}
 	return bushCD
 }
