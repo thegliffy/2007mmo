@@ -16,7 +16,7 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 | `.` grass | `terrain/grass.png` |
 | `P` path | `terrain/path.png` |
 | `~` water | `terrain/water.png` |
-| scars (x≥27) | `terrain/scar.png` |
+| scars (27≤x<40) | `terrain/scar.png` |
 | `#` wall | `terrain/wall.png` |
 | `T` tree | `props/tree.png` (+ `props/stump.png` when spent) |
 | `H` house | `buildings/house.png` |
@@ -29,6 +29,7 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 | hazel / `Z` | `gather/hazel.png` (+ `gather/hazel_bare.png` when spent) |
 | copper / `C` | `gather/ore_copper.png` (+ `gather/ore_copper_empty.png` when spent) |
 | tin / `N` | `gather/ore_tin.png` (+ `gather/ore_tin_empty.png` when spent) |
+| fish / `F` | `gather/fish_spot.png` (+ `gather/fish_spot_empty.png` when spent); ground tile is water |
 | stile | `props/stile.png` |
 | pedlar | `props/pedlar_stall.png` |
 | Marta / Old Fen / Pip / Wend | `npcs/*.png` |
@@ -42,4 +43,4 @@ Original IP for `thegliffy/2007mmo`. North star: carved wood+parchment HUD (UI s
 See `manifest.json` for full file list. WebP twins sit beside PNGs where generated.
 
 ## Style pass (2026-09-22)
-Kyle: ¾ + chase camera, pulled in to a 128×64 tile diamond (+33% vs 96×48). Plates are chunky low-res pixels: flat two-tone fills, one dark outline, short palette. Gather nodes swap to a spent plate when `ready` is false (stump, bare bush, bare hazel, empty copper, empty tin) and back when the node refills. Sprite URLs carry `?v=rs2-zoom1`.
+Kyle: ¾ + chase camera, pulled in to a 128×64 tile diamond (+33% vs 96×48). Plates are chunky low-res pixels: flat two-tone fills, one dark outline, short palette. Gather nodes swap to a spent plate when `ready` is false (stump, bare bush, bare hazel, empty copper, empty tin, empty fishing ripples) and back when the node refills. Sprite URLs carry `?v=reedwater1`.

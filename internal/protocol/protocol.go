@@ -81,6 +81,12 @@ const (
 	ItemBar    = "bar"
 	ItemKnife  = "knife"
 
+	// Fishing. A reed rod is worn in the hand, like the axe and the pick.
+	// A raw perch wants a hearth; the fried one is food.
+	ItemRod   = "rod"
+	ItemPerch = "perch"
+	ItemFried = "fried"
+
 	// Equipment slots. One item to a slot, and an equipped item is out of
 	// the pack — which is what makes wearing something a choice.
 	SlotHand = "hand"
@@ -93,6 +99,7 @@ const (
 	SkillWood    = "wood"
 	SkillMine    = "mine"
 	SkillSmith   = "smith"
+	SkillFish    = "fish"
 
 	KindBush   = "bush"
 	KindHazel  = "hazel"
@@ -104,6 +111,7 @@ const (
 	KindKiln   = "kiln"
 	KindAnvil  = "anvil"
 	KindChest  = "chest"
+	KindFish   = "fish"
 
 	ActionForage = "forage"
 	ActionMill   = "mill"
@@ -115,6 +123,8 @@ const (
 	ActionSmelt  = "smelt"
 	ActionForge  = "forge"
 	ActionFight  = "fight"
+	ActionFish   = "fish"
+	ActionFry    = "fry"
 )
 
 // In is every client → server frame. Unused fields stay empty.
@@ -391,6 +401,7 @@ func SkillCatalog() map[string]SkillInfo {
 		SkillWood:    {Name: "Woodcutting", Order: 5},
 		SkillMine:    {Name: "Mining", Order: 6},
 		SkillSmith:   {Name: "Smithing", Order: 7},
+		SkillFish:    {Name: "Fishing", Order: 8},
 	}
 }
 
@@ -415,6 +426,10 @@ func Catalog() map[string]ItemInfo {
 		ItemTin:    {Name: "Tin ore", Glyph: "Sn"},
 		ItemBar:    {Name: "Bronze bar", Glyph: "Br"},
 		ItemKnife:  {Name: "Bronze knife", Glyph: "Kn", Tool: true, Slot: SlotHand, Attack: 2, Damage: 1},
+
+		ItemRod:   {Name: "Reed rod", Glyph: "Rd", Tool: true, Verb: "fish", Slot: SlotHand},
+		ItemPerch: {Name: "Reed perch", Glyph: "Rp"},
+		ItemFried: {Name: "Fried perch", Glyph: "Fp"},
 	}
 }
 

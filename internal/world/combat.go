@@ -42,6 +42,7 @@ const (
 	npcRespawnTicks = 10
 	tartHeal        = 4
 	roastHeal       = 3
+	friedHeal       = 3
 )
 
 func (n *NPC) Living() bool {
@@ -360,6 +361,8 @@ func foodHeal(itemID string) int {
 		return tartHeal
 	case protocol.ItemRoast:
 		return roastHeal
+	case protocol.ItemFried:
+		return friedHeal
 	default:
 		return 0
 	}

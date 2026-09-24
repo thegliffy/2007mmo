@@ -28,6 +28,8 @@
     { key: "gather/ore_copper_empty", src: "assets/gather/ore_copper_empty.png" },
     { key: "gather/ore_tin", src: "assets/gather/ore_tin.png", fallback: "assets/props/tin.png" },
     { key: "gather/ore_tin_empty", src: "assets/gather/ore_tin_empty.png" },
+    { key: "gather/fish_spot", src: "assets/gather/fish_spot.png" },
+    { key: "gather/fish_spot_empty", src: "assets/gather/fish_spot_empty.png" },
     { key: "hostiles/thornkin", src: "assets/hostiles/thornkin.png" },
     { key: "hostiles/brambleback", src: "assets/hostiles/brambleback.png" },
     { key: "npcs/marta", src: "assets/npcs/marta.png" },
@@ -56,7 +58,7 @@
   PACK.forEach((p) => { MANIFEST[p.key] = p.src; });
 
   // Bump when plates change so a cached sprite sheet cannot outlive the pack.
-  const ASSET_REV = "rs2-zoom1";
+  const ASSET_REV = "reedwater1";
 
   const images = {};
   const measured = {};
@@ -89,6 +91,8 @@
     "gather/ore_copper_empty": { x: 9, y: 30, w: 81, h: 63 },
     "gather/ore_tin": { x: 9, y: 30, w: 81, h: 63 },
     "gather/ore_tin_empty": { x: 9, y: 30, w: 81, h: 63 },
+    "gather/fish_spot": { x: 6, y: 39, w: 87, h: 57 },
+    "gather/fish_spot_empty": { x: 6, y: 45, w: 87, h: 51 },
     "hostiles/thornkin": { x: 14, y: 34, w: 38, h: 58 },
     "hostiles/brambleback": { x: 4, y: 22, w: 60, h: 72 },
     "npcs/marta": { x: 14, y: 4, w: 36, h: 86 },
@@ -257,7 +261,8 @@
 
   function tileKey(glyph, scars) {
     switch (glyph) {
-      case "~": return "terrain/water";
+      case "~":
+      case "F": return "terrain/water";
       case "P": return scars ? "terrain/scar" : "terrain/path";
       case "#": return "terrain/wall";
       case "C":
@@ -281,6 +286,7 @@
     if (n.kind === "anvil") return "props/anvil";
     if (n.kind === "copper") return down ? "gather/ore_copper_empty" : "gather/ore_copper";
     if (n.kind === "tin") return down ? "gather/ore_tin_empty" : "gather/ore_tin";
+    if (n.kind === "fish") return down ? "gather/fish_spot_empty" : "gather/fish_spot";
     if (n.kind === "fire") return n.id === "fire-1" ? "props/hearth" : "";
     return "";
   }

@@ -41,7 +41,8 @@
 
   function groundFill(glyph, x, y, scars) {
     switch (glyph) {
-      case "~": return "#2d5f94";
+      case "~":
+      case "F": return "#2d5f94";
       case "P": return scars ? "#8a7350" : "#c2a36b";
       case "H":
       case "*": return "#b08968";
@@ -336,6 +337,8 @@
       case "smelt": return "smelting";
       case "forge": return "forging";
       case "fight": return "fighting";
+      case "fish": return "fishing";
+      case "fry": return "frying";
       default: return action;
     }
   }
@@ -365,6 +368,7 @@
       case "house": return s(192, 192);
       case "pedlar_stall": return s(56, 64);
       case "ore": return s(44, 36);
+      case "fish": return s(52, 36);
       case "wall": return s(56, 40);
       case "figure": return s(36, 72);
       case "hostile": return s(extra && extra.big ? 48 : 36, extra && extra.big ? 80 : 72);
@@ -390,6 +394,7 @@
         : n.kind === "chest" ? "oak_chest"
         : n.kind === "bush" ? "bramble"
         : n.kind === "copper" || n.kind === "tin" ? "ore"
+        : n.kind === "fish" ? "fish"
         : n.kind === "tree" && !n.ready ? "stump"
         : n.kind;
       consider(n.x, n.y, kind, n);
@@ -468,7 +473,8 @@
     }
     ground.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.y - b.y || a.x - b.x);
     for (const t of ground) {
-      const scars = t.x >= 27;
+      // Scars stay in the old eastern band. The reedwater (x >= 40) is grass and water.
+      const scars = t.x >= 27 && t.x < 40;
       const key = S ? S.tileKey(t.g === "T" ? "." : t.g, scars) : "";
       drawDiamond(ctx, t.x, t.y, cam, groundFill(t.g, t.x, t.y, scars), key, flicker);
     }
@@ -642,6 +648,23 @@
             if (n.ready) {
               ctx.fillStyle = n.kind === "copper" ? "#c46a32" : "#c8c4b0";
               ctx.fillRect(feet.x - 2, feet.y - 8, 4, 4);
+            }
+          } else if (n.kind === "fish") {
+            ctx.strokeStyle = n.ready ? "rgba(220,240,255,0.95)" : "rgba(140,170,190,0.45)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(feet.x, feet.y - 6, 16, 7, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(feet.x, feet.y - 6, 9, 4, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            if (n.ready) {
+              ctx.fillStyle = "#d8e4ee";
+              ctx.beginPath();
+              ctx.ellipse(feet.x - 1, feet.y - 8, 8, 3, -0.4, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#1c140c";
+              ctx.fillRect(feet.x - 5, feet.y - 9, 2, 2);
             }
           } else if (n.kind === "fire") {
             ctx.fillStyle = "#5a3a18";
