@@ -37,6 +37,26 @@
       "bytes": 658
     },
     {
+      "path": "gather/fish_spot.png",
+      "kind": "gather",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "node fish \u2014 ripples and a perch",
+      "bytes": 656
+    },
+    {
+      "path": "gather/fish_spot_empty.png",
+      "kind": "gather",
+      "draw_px": [
+        96,
+        96
+      ],
+      "notes": "node fish spent \u2014 empty ripples",
+      "bytes": 485
+    },
+    {
       "path": "gather/hazel.png",
       "kind": "gather",
       "draw_px": [

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hollowmere — a woodland hamlet</title>
-  <link rel="stylesheet" href="styles.css?v=rs2-zoom1" />
+  <link rel="stylesheet" href="styles.css?v=reedwater1" />
 </head>
 <body>
   <div id="frame">
@@ -25,8 +25,8 @@
           <div class="bevel">
             <canvas id="stage" width="1200" height="960"></canvas>
           </div>
-          <p id="crumbs">Oak chest by the stile · Wend sells a quarry pick · South, fight · East, the scars</p>
-          <p id="hint">Walk the grass. The <em>oak chest</em> by the stile holds what will not fit in the pack. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
+          <p id="crumbs">Oak chest by the stile · Wend sells a reed rod · East, the scars, then the reedwater · South, fight</p>
+          <p id="hint">Walk the grass. The <em>oak chest</em> by the stile holds what will not fit in the pack. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. Past the north-east gate, the <em>reedwater</em>: a rod in hand, then a fishing spot. Fry the perch at the hearth. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
         </div>
         <aside id="panels">
           <section class="panel">
@@ -36,7 +36,7 @@
           </section>
           <section class="panel">
             <h2>Skills</h2>
-            <p class="sub">Foraging and cooking in the hamlet, Mining and Smithing in the eastern scars, Melee and Defense in the briar-woods.</p>
+            <p class="sub">Foraging and cooking in the hamlet, Mining and Smithing in the eastern scars, Fishing on the reedwater, Melee and Defense in the briar-woods.</p>
             <div id="skills"></div>
           </section>
           <section class="panel">
@@ -62,6 +62,7 @@
               <li>Click the <em>oak chest</em> by the stile to leave overflow — pack stays limited, the chest remembers</li>
               <li>Click <em>Wend the Pedlar</em> by the millstone to sell what you gather — she stocks a <em>quarry pick</em></li>
               <li>Walk <em>east</em> into the scars, mine <em>copper</em> and <em>tin</em>, smelt a <em>bronze bar</em> at the kiln, forge a <em>bronze knife</em> at the anvil</li>
+              <li>Buy a <em>reed rod</em> from Wend, wear it, and follow the north-east gate to the <em>reedwater</em>. Click a fishing spot for a <em>reed perch</em>, then fry it at the hearth</li>
             </ol>
           </section>
           <section class="panel">
@@ -170,7 +171,7 @@
         </div>
         <form id="form-looks" class="looks-axes">
           <div id="looks-pickers"></div>
-          <p class="crumbs">Oak chest by the stile. Wend sells a quarry pick. South, fight. East, the scars.</p>
+          <p class="crumbs">Oak chest by the stile. Wend sells a reed rod. East, the scars, then the reedwater. South, fight.</p>
           <button id="do-looks" type="submit">Step onto the stile</button>
         </form>
       </div>
@@ -223,10 +224,10 @@
     </div>
   </div>
 
-  <script src="pick-npc.js?v=rs2-zoom1"></script>
-  <script src="iso.js?v=rs2-zoom1"></script>
-  <script src="sprites.js?v=rs2-zoom1"></script>
-  <script src="art.js?v=rs2-zoom1"></script>
-  <script src="app.js?v=rs2-zoom1"></script>
+  <script src="pick-npc.js?v=reedwater1"></script>
+  <script src="iso.js?v=reedwater1"></script>
+  <script src="sprites.js?v=reedwater1"></script>
+  <script src="art.js?v=reedwater1"></script>
+  <script src="app.js?v=reedwater1"></script>
 </body>
 </html>

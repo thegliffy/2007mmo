@@ -170,7 +170,7 @@ func TestEveryVerbHasOneTool(t *testing.T) {
 		}
 		seen[info.Verb] = id
 	}
-	for _, verb := range []string{"chop", "light", "mine"} {
+	for _, verb := range []string{"chop", "light", "mine", "fish"} {
 		if protocol.ToolFor(verb) == "" {
 			t.Errorf("no tool provides %q", verb)
 		}

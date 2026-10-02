@@ -34,6 +34,8 @@ NUT = (156, 104, 48, 255)
 PLASTER, PLASTER_D = (214, 186, 132, 255), (176, 140, 88, 255)
 THATCH, THATCH_L = (148, 108, 48, 255), (184, 140, 64, 255)
 FIRE_C, FIRE_Y = (208, 72, 24, 255), (240, 196, 64, 255)
+PERCH, PERCH_D = (214, 226, 232, 255), (120, 156, 186, 255)
+RIPPLE = (186, 220, 236, 255)
 
 SKIN = {
     "fair": (236, 206, 168, 255),
@@ -240,6 +242,23 @@ def ore(d, spots, color, empty=False, hollow=None):
         d.rectangle([x, y, x + 1, y + 1], fill=color)
 
 
+def fish_spot(d, empty=False):
+    # Pool sits low so the plate's ground diamond lands on the water tile.
+    d.ellipse([3, 16, 29, 30], fill=W_TOP)
+    d.ellipse([6, 18, 26, 28], fill=W_LEFT)
+    d.arc([7, 18, 25, 28], 200, 340, fill=RIPPLE)
+    d.arc([10, 20, 22, 27], 210, 330, fill=W_MARK)
+    d.rectangle([8, 22, 11, 23], fill=RIPPLE)
+    d.rectangle([19, 23, 23, 24], fill=W_MARK)
+    if empty:
+        return
+    d.polygon([(9, 24), (16, 21), (20, 23), (16, 26)], fill=PERCH)
+    d.polygon([(16, 21), (23, 19), (21, 23), (23, 26), (16, 26)], fill=PERCH_D)
+    d.rectangle([11, 22, 12, 23], fill=INK)
+    d.rectangle([14, 15, 15, 18], fill=RIPPLE)
+    d.rectangle([16, 14, 18, 15], fill=W_MARK)
+
+
 def hearth(d):
     d.ellipse([6, 18, 26, 30], fill=STONE_D)
     d.ellipse([8, 19, 24, 28], fill=STONE_M)
@@ -351,6 +370,8 @@ def gather_and_props():
         "gather/ore_copper_empty.png": lambda d: ore(d, (), COPPER, empty=True, hollow=COPPER_D),
         "gather/ore_tin.png": lambda d: ore(d, ((13, 17), (21, 18), (15, 23)), TIN),
         "gather/ore_tin_empty.png": lambda d: ore(d, (), TIN, empty=True, hollow=TIN_D),
+        "gather/fish_spot.png": lambda d: fish_spot(d, False),
+        "gather/fish_spot_empty.png": lambda d: fish_spot(d, True),
     }
     for rel, fn in specs.items():
         save(prop(fn), rel)
@@ -577,6 +598,8 @@ def refresh_manifest():
         "gather/hazel_bare.png": "node hazel spent — bare branches",
         "gather/ore_copper_empty.png": "node copper spent — empty rock",
         "gather/ore_tin_empty.png": "node tin spent — empty rock",
+        "gather/fish_spot.png": "node fish — ripples and a perch",
+        "gather/fish_spot_empty.png": "node fish spent — empty ripples",
     }
     notes.update(extras)
     # Rewrite draw sizes from the files we know.
@@ -652,6 +675,7 @@ def main():
         "props/tree.png", "props/stump.png", "props/stile.png", "props/hearth.png",
         "buildings/house.png", "npcs/marta.png", "paperdoll/skin_tan.png",
         "gather/bramble.png", "gather/bramble_bare.png", "gather/ore_copper.png", "gather/ore_copper_empty.png",
+        "gather/fish_spot.png", "gather/fish_spot_empty.png",
     ]
     for rel in keys:
         b = bounds_of(os.path.join(ROOT, rel))

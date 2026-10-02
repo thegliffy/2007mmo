@@ -64,6 +64,7 @@ slots, so a pack of tools costs what it looks like it costs.
 | Woodsman's axe | chopping trees | 12 |
 | Flint and steel | lighting a pile of logs | 8 |
 | Quarry pick | mining copper and tin | 14 |
+| Reed rod | fishing the reedwater | 10 |
 | Bronze knife | +2 Melee levels and +1 damage | 42 |
 | Briar sword | +4 Melee levels and +1 damage | 60 |
 | Leather jerkin | +6 Defense levels, worn on the body | 45 |
@@ -76,7 +77,7 @@ log.
 
 ### Equip slots
 
-There are two: **hand** and **body**. Click a sword, an axe, a pick, a knife or
+There are two: **hand** and **body**. Click a sword, an axe, a pick, a rod, a knife or
 the jerkin in the pack to put it on; click the slot to put it away. The item
 leaves the pack while it is worn, and swapping stows whatever was there — with a
 full pack the swap is refused rather than dropping anything.
@@ -84,7 +85,7 @@ full pack the swap is refused rather than dropping anything.
 Carrying used to be enough, and that was the problem: a sword cost one slot and
 gave its bonus from inside the pack, so there was never a reason not to have
 everything at once. **One hand means one choice.** The axe fells trees, the pick
-breaks rock, the sword swings harder, and you cannot be doing all three this
+breaks rock, the rod fishes, the sword swings harder, and you cannot be doing all of those this
 minute:
 
 > You would need an axe in hand for that.
@@ -143,6 +144,8 @@ and open her board.
 | Roast hazel | 5 | 12 |
 | Hearth tart | 7 | 16 |
 | Paper | 8 | — |
+| Reed perch | 2 | — |
+| Fried perch | 6 | 13 |
 | Copper ore, Tin ore | 2 | — |
 | Bronze bar | 8 | — |
 | Goblin leather | 25 | — |
@@ -162,7 +165,7 @@ actually happen, so it never invites a refusal.
 
 ### Wood
 
-Trees are work now, not scenery. **134 of the 144** on the map can be chopped —
+Trees are work now, not scenery. **186 of the 196** on the map can be chopped —
 the rest are walled in by their own clump, and a tree you can never stand
 beside has no business being a node. The scars added more timber along the
 hills; the rule did not change.
@@ -216,6 +219,38 @@ killed world loses an in-flight channel rather than minting a second lump.
 
 Out of scope on purpose: a full smithing tree, iron and coal, plate, or a
 second alloy.
+
+### The reedwater
+
+The map is **60×46**. Columns 0–38 are the hamlet, the briar-woods, and the
+scars, on the same tiles as before. Column 39 was the east wall. Three gates
+— rows 4, 7, and 13, where grass already reached that wall — open onto the
+**reedwater**, a meadow and shoreline that runs out to x=59 and down to y=45.
+The southern briar-woods stay walled off from it, and the veins, kiln, and
+anvil stay in the scars.
+
+This is the beginner fishing loop, the same shape as wood and metal: a tool
+in the hand, a gather node, a process on a fire you already know.
+
+- Buy a **reed rod** from Wend (10 coins) and wear it. A rod in the pack does
+  not fish, the same way an axe in the pack does not chop.
+- Walk **east** through a north-east gate (the grass past the hamlet path, or
+  the two gates along the north of the scars).
+- Click a **fishing spot** in the water (channel 3 ticks) → `Reed perch` +
+  **Fishing** XP. No rod in hand, no fish — the water just says so.
+- Click the **hearth** (or a campfire) with a perch (channel 3 ticks) →
+  `Fried perch` + **Cooking** XP. Pulp still bakes first, then a hazel nut,
+  then the perch, so the older recipes behave exactly as they did.
+- Eat a fried perch. It mends 3 heart, the same as a roast hazel. Raw perch
+  will not be eaten.
+
+A spot holds 3 fish, then it is spent: `ready` goes false and the plate
+swaps from a perch in the ripples to **empty ripples**. After 16 ticks it
+fills again and the full plate returns. Spots you cannot stand beside are
+not nodes. Older characters pick up Fishing at level 1 on login.
+
+There are 11 spots along the shore, including one beside a short pier where
+the river opens into the lake.
 
 ### Nodes are sent once, not every tick
 
@@ -364,7 +399,7 @@ The dump is accounts, packs (including metal), coins, the personal chest (`bank`
 
 1. A browser loads, **registers or logs in** (name + password, scrypt-hashed, HttpOnly session cookie), and joins **one world** over an authenticated WebSocket. Compose also terminates **WSS** on `:8443` (self-signed).
 2. An authoritative **~600ms** tick loop runs in **Docker Compose** next to **Postgres** (canonical state) and **Redis** (session / presence).
-3. Click-to-move (WASD optional) on a **40×32** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet and the scars).
+3. Click-to-move (WASD optional) on a **60×46** tile map. Other players, three villagers, and southern hostiles are visible (naive AOI: the whole hamlet, the scars, and the reedwater).
 4. **Foraging** (gather) → **mill / hearth** (process) → eat (use). **Mining** → kiln → anvil. The pack **and the oak chest persist across logout**.
 5. **1vNPC combat** on the tick: click-to-attack, HP feedback, soft respawn at the stile.
 6. A **headless bot harness** (`cmd/bots`) opens real WS clients — not browsers — for load.
@@ -377,9 +412,9 @@ It does **not** claim 1k CCU, a skill tree, a market, quests, PvP, or multiple w
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in two desktop tabs. **Register a name and password in each** (they are separate accounts). Click the grass to walk, a bramble or hazel to gather, the millstone to crush, the hearth to cook. Walk **east** into the scars to mine and smith, further east through a north-east gate to fish the reedwater, or **south** and click **near** a Thornkin to fight. Type in the parchment log.
 
-**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=equip-1` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
+**Kyle / live cache:** after a deploy, hard-refresh `https://2007.gliffy.tv/` (Ctrl+Shift+R / Cmd+Shift+R). `index.html` loads `app.js?v=reedwater1` (and `iso.js` / `art.js` / `sprites.js` / `pick-npc.js` / `styles.css` on the same query) — bump that query when a client fix must punch through a cache. Sprite URLs use the same rev. The P0 ops checklist (backup, drill, deploy, rollback, scrape) is at the top of **[docs/ops.md](docs/ops.md)**.
 
 Deploying is one command on the live host — `./scripts/deploy.sh` dumps Postgres, fast-forwards, rebuilds, and rolls back to the previous commit if the new build will not answer `/health`. See [docs/ops.md](docs/ops.md) A1.
 

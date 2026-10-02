@@ -40,6 +40,10 @@ assert(spr.nodeKey({ kind: "fire", id: "fire-1" }) === "props/hearth", "hearth i
 assert(spr.nodeKey({ kind: "fire", id: "fire-9" }) === "", "campfire stays a canvas pile");
 assert(spr.nodeKey({ kind: "tree", ready: true }) === "", "ready trees stay on the map tile");
 assert(spr.nodeKey({ kind: "tree", ready: false }) === "props/stump", "spent tree is a stump");
+assert(spr.nodeKey({ kind: "fish", ready: true }) === "gather/fish_spot", "ready fishing spot");
+assert(spr.nodeKey({ kind: "fish", ready: false }) === "gather/fish_spot_empty", "spent fishing spot is empty ripples");
+assert(spr.nodeKey({ kind: "fish" }) === "gather/fish_spot", "missing ready flag stays a full spot");
+assert(spr.tileKey("F", false) === "terrain/water", "fishing tile is water");
 
 assert(spr.npcKey({ name: "Thornkin", hostile: true }) === "hostiles/thornkin", "thornkin");
 assert(spr.npcKey({ name: "Brambleback", hostile: true }) === "hostiles/brambleback", "brambleback");
@@ -63,6 +67,8 @@ assert(spr.MANIFEST["gather/bramble_bare"], "bare bramble is in the drop list");
 assert(spr.MANIFEST["gather/hazel_bare"], "bare hazel is in the drop list");
 assert(spr.MANIFEST["gather/ore_copper_empty"], "empty copper rock is in the drop list");
 assert(spr.MANIFEST["gather/ore_tin_empty"], "empty tin rock is in the drop list");
+assert(spr.MANIFEST["gather/fish_spot"], "fishing spot is in the drop list");
+assert(spr.MANIFEST["gather/fish_spot_empty"], "empty fishing spot is in the drop list");
 assert(spr.ASSET_REV, "sprite urls are cache-busted");
 assert(spr.MANIFEST["npcs/marta"], "Marta is in the drop list");
 assert(spr.MANIFEST["paperdoll/skin_tan"], "paperdoll skin is in the drop list");

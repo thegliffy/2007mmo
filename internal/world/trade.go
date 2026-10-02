@@ -43,8 +43,12 @@ var tradeBoard = []TradeOffer{
 	{Item: protocol.ItemFlint, Pays: 4, Costs: 8},
 	{Item: protocol.ItemAxe, Pays: 6, Costs: 12},
 	{Item: protocol.ItemPick, Pays: 7, Costs: 14},
+	{Item: protocol.ItemRod, Pays: 5, Costs: 10},
 	{Item: protocol.ItemSword, Pays: 30, Costs: 60},
 	{Item: protocol.ItemJerkin, Pays: 22, Costs: 45},
+
+	{Item: protocol.ItemPerch, Pays: 2},
+	{Item: protocol.ItemFried, Pays: 6, Costs: 13},
 
 	{Item: protocol.ItemCopper, Pays: 2},
 	{Item: protocol.ItemTin, Pays: 2},

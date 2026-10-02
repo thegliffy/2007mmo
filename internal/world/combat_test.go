@@ -571,7 +571,7 @@ func TestOlderCharactersGainTheNewSkills(t *testing.T) {
 		Skills: map[string]SkillState{protocol.SkillForage: {Lv: 7, XP: 300}},
 	}
 	p := w.UpsertPlayer(legacy, true)
-	for _, id := range []string{protocol.SkillMelee, protocol.SkillDefense, protocol.SkillCook, protocol.SkillMine, protocol.SkillSmith} {
+	for _, id := range []string{protocol.SkillMelee, protocol.SkillDefense, protocol.SkillCook, protocol.SkillMine, protocol.SkillSmith, protocol.SkillFish} {
 		if sk, ok := p.Skills[id]; !ok || sk.Lv != 1 {
 			t.Errorf("%s missing or not level 1 on an older character: %+v", id, sk)
 		}
