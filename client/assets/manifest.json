@@ -475,6 +475,26 @@
       ],
       "notes": "map ground; tile char . P ~ scars",
       "bytes": 425
+    },
+    {
+      "path": "paperdoll/jerkin_mask.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "worn body layer; tinted from item wornColor; sleeveless torso band",
+      "bytes": 592
+    },
+    {
+      "path": "paperdoll/sword_mask.png",
+      "kind": "paperdoll",
+      "draw_px": [
+        128,
+        192
+      ],
+      "notes": "worn hand layer; steel tint; blade outboard of the arm",
+      "bytes": 521
     }
   ]
 }

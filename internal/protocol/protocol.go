@@ -156,6 +156,9 @@ type PlayerView struct {
 	Action string `json:"action,omitempty"`
 	// Looks is what peers paint. Omitted when the creator has not run.
 	Looks *Looks `json:"looks,omitempty"`
+	// Worn is the paperdoll gear peers paint over the looks layers.
+	// Omitted when nothing worn shows on the doll.
+	Worn *WornView `json:"worn,omitempty"`
 }
 
 type YouView struct {
@@ -255,10 +258,16 @@ type ItemInfo struct {
 	// Slot is where it is worn, empty if it cannot be equipped.
 	Slot string `json:"slot,omitempty"`
 	// Attack and Defense count as extra Melee and Defense levels; Damage is
-	// added flat on top of the swing.
+	// a flat bonus on the swing.
 	Attack  int `json:"attack,omitempty"`
 	Damage  int `json:"damage,omitempty"`
 	Defense int `json:"defense,omitempty"`
+	// Worn is the paperdoll asset name for this item when equipped (e.g.
+	// "jerkin" -> client asset paperdoll/jerkin_mask). Empty means the
+	// item is equipped but not painted on the doll.
+	Worn string `json:"worn,omitempty"`
+	// WornColor tints the Worn mask on the doll.
+	WornColor string `json:"wornColor,omitempty"`
 }
 
 type Welcome struct {
@@ -407,9 +416,9 @@ func Catalog() map[string]ItemInfo {
 
 		ItemAxe:    {Name: "Woodsman's axe", Glyph: "Ax", Tool: true, Verb: "chop", Slot: SlotHand},
 		ItemFlint:  {Name: "Flint and steel", Glyph: "Fs", Tool: true, Verb: "light"},
-		ItemSword:  {Name: "Briar sword", Glyph: "Sw", Tool: true, Slot: SlotHand, Attack: 4, Damage: 1},
+		ItemSword:  {Name: "Briar sword", Glyph: "Sw", Tool: true, Slot: SlotHand, Attack: 4, Damage: 1, Worn: "sword", WornColor: "#9aa4ae"},
 		ItemPick:   {Name: "Quarry pick", Glyph: "Pk", Tool: true, Verb: "mine", Slot: SlotHand},
-		ItemJerkin: {Name: "Leather jerkin", Glyph: "Jk", Tool: true, Slot: SlotBody, Defense: 6},
+		ItemJerkin: {Name: "Leather jerkin", Glyph: "Jk", Tool: true, Slot: SlotBody, Defense: 6, Worn: "jerkin", WornColor: "#8a5a2a"},
 
 		ItemCopper: {Name: "Copper ore", Glyph: "Cu"},
 		ItemTin:    {Name: "Tin ore", Glyph: "Sn"},

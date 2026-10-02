@@ -1078,6 +1078,7 @@
       now: performance.now(),
       camFocus: state.camFocus,
       snap: state.camSnap,
+      items: state.items,
     });
     state.cam = out.cam;
     state.camFocus = out.focus;

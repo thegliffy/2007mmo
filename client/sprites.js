@@ -48,6 +48,8 @@
     { key: "paperdoll/hair_tied_mask", src: "assets/paperdoll/hair_tied_mask.png" },
     { key: "paperdoll/hair_long_mask", src: "assets/paperdoll/hair_long_mask.png" },
     { key: "paperdoll/body_mask", src: "assets/paperdoll/body_mask.png" },
+    { key: "paperdoll/jerkin_mask", src: "assets/paperdoll/jerkin_mask.png" },
+    { key: "paperdoll/sword_mask", src: "assets/paperdoll/sword_mask.png" },
     { key: "paperdoll/tunic_mask", src: "assets/paperdoll/tunic_mask.png" },
     { key: "paperdoll/preview_default_looks", src: "assets/paperdoll/preview_default_looks.png" },
   ];

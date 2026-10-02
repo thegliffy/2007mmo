@@ -234,3 +234,41 @@ func TestEverySlotHasSomethingToPutInIt(t *testing.T) {
 		}
 	}
 }
+
+// The doll peers see must carry what you wear. A pick in hand stays off
+// the snapshot (it has no Worn asset); the jerkin and sword ride along.
+func TestSnapshotCarriesWornGear(t *testing.T) {
+	w := testWorld(t, newMem())
+	a := withTools(w.UpsertPlayer(NewPlayerRec("p1", "Kyle"), true),
+		protocol.ItemJerkin, protocol.ItemSword)
+	b := withTools(w.UpsertPlayer(NewPlayerRec("p2", "Wren"), true), protocol.ItemPick)
+	if _, ok := w.Equip(context.Background(), "p1", protocol.ItemJerkin); !ok {
+		t.Fatal("jerkin failed")
+	}
+	if _, ok := w.Equip(context.Background(), "p1", protocol.ItemSword); !ok {
+		t.Fatal("sword failed")
+	}
+	if _, ok := w.Equip(context.Background(), "p2", protocol.ItemPick); !ok {
+		t.Fatal("pick failed")
+	}
+	_ = a
+	_ = b
+
+	st := w.Snapshot("p2")
+	var kyle *protocol.PlayerView
+	for i := range st.Players {
+		if st.Players[i].Name == "Kyle" {
+			kyle = &st.Players[i]
+		}
+	}
+	if kyle == nil {
+		t.Fatal("Kyle not in the snapshot")
+	}
+	if kyle.Worn == nil || kyle.Worn.Body != protocol.ItemJerkin || kyle.Worn.Hand != protocol.ItemSword {
+		t.Fatalf("Kyle's doll shipped bare: %+v", kyle.Worn)
+	}
+	// And Kyle's own view carries it too, so the looks desk can preview.
+	if w.youView(w.Players["p1"]).Worn == nil {
+		t.Fatal("your own view should show what you wear")
+	}
+}

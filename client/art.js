@@ -215,7 +215,24 @@
 
   // Chunky ¾ paperdoll. AD layers win; otherwise a readable 2007-era doll.
   // `dest` is the world blit size; the looks desk leaves it unset.
-  function drawPaperdoll(ctx, cx, cy, s, looks, highlight, dest) {
+  // Worn gear rides on the doll: the server ships catalog item ids in
+  // PlayerView.worn; the catalog's `worn` field names the mask and
+  // `wornColor` tints it. Unknown ids paint nothing, same as bare.
+  function wornLayers(worn, catalog) {
+    if (!worn || !catalog) return [];
+    const out = [];
+    if (worn.body && catalog[worn.body] && catalog[worn.body].worn) {
+      out.push({ key: "paperdoll/" + catalog[worn.body].worn + "_mask",
+                 color: catalog[worn.body].wornColor });
+    }
+    if (worn.hand && catalog[worn.hand] && catalog[worn.hand].worn) {
+      out.push({ key: "paperdoll/" + catalog[worn.hand].worn + "_mask",
+                 color: catalog[worn.hand].wornColor });
+    }
+    return out;
+  }
+
+  function drawPaperdoll(ctx, cx, cy, s, looks, highlight, dest, worn, catalog) {
     const l = looks || defaultLooks();
     const S = spr();
     const keys = S && S.paperdollKeys(l);
@@ -232,6 +249,8 @@
         ? S.blitFeet(ctx, keys.tunic, cx, cy, fw, fh)
         : S.blitTint(ctx, tunicLayer, cx, cy, fw, fh, keys.tunicColor);
       const drewHair = S.blitTint(ctx, keys.hair, cx, cy, fw, fh, keys.hairColor);
+      const gear = wornLayers(worn, catalog);
+      for (const g of gear) S.blitTint(ctx, g.key, cx, cy, fw, fh, g.color);
       if (drewSkin && (drewTunic || drewHair)) {
         if (highlight) {
           ctx.strokeStyle = "rgba(255,244,176,0.75)";
@@ -685,7 +704,7 @@
         const drewNpc = nkey && S.blitFeet(ctx, nkey, feet.x, feet.y, sz.w, sz.h);
         if (!drewNpc) {
           if (hostile) drawHostileFallback(ctx, feet.x, feet.y, 14 * zoom(), e.name);
-          else drawPaperdoll(ctx, feet.x, feet.y, 14 * zoom(), looksOf(e), f.kind === "you", sz);
+          else drawPaperdoll(ctx, feet.x, feet.y, 14 * zoom(), looksOf(e), f.kind === "you", sz, e.worn, view.items);
         } else if (f.kind === "you") {
           ctx.strokeStyle = "rgba(255,244,176,0.7)";
           ctx.beginPath();

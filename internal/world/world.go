@@ -911,6 +911,7 @@ func (w *World) Snapshot(id string) protocol.State {
 		players = append(players, protocol.PlayerView{
 			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
 			Looks: looksView(p.Looks),
+			Worn:  protocol.WornFor(p.Equipped),
 		})
 	}
 	npcs := make([]protocol.NPCView, 0, len(w.NPCs))
@@ -990,6 +991,7 @@ func (w *World) youView(p *Player) protocol.YouView {
 		PlayerView: protocol.PlayerView{
 			ID: w.HandleFor(p.ID), Name: p.Name, X: p.X, Y: p.Y, Action: p.Action,
 			Looks: looksView(p.Looks),
+			Worn:  protocol.WornFor(p.Equipped),
 		},
 		Inv:       inv,
 		Skills:    sk,
