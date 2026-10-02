@@ -69,8 +69,8 @@ assert(spr.MANIFEST["paperdoll/skin_tan"], "paperdoll skin is in the drop list")
 assert(spr.MANIFEST["terrain/grass"], "grass is in the drop list");
 
 const grass = spr.BOUNDS["terrain/grass"];
-assert(grass && grass.w === 58 && grass.h === 40, "grass opaque seed matches the plate");
-const cube = spr.destAtTopDiamond(0, 0, 96, 64, 64, grass);
+assert(grass && grass.w === 128 && grass.h === 64, "grass seed is the full 128x64 plate");
+const cube = spr.destAtTopDiamond(0, 0, 96, 128, 64, grass);
 assert(Math.abs((cube.x + grass.x * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest left");
 assert(Math.abs((cube.y + grass.y * (96 / grass.w)) - 0) < 1e-9, "top-diamond dest north");
 

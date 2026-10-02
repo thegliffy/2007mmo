@@ -40,19 +40,21 @@
   }
 
   function groundFill(glyph, x, y, scars) {
+    // Flat base tones that match the OSRS-style plates; the (x+y)%2
+    // checker is only a fallback seam-filler under the plate edges.
     switch (glyph) {
-      case "~": return "#2d5f94";
-      case "P": return scars ? "#8a7350" : "#c2a36b";
+      case "~": return "#3a6a86";
+      case "P": return scars ? "#8a7350" : "#928060";
       case "H":
       case "*": return "#b08968";
       case "#": return "#4a4035";
       case "C":
       case "N":
       case "K":
-      case "A": return (x + y) % 2 ? "#6a5a3c" : "#5a4a30";
+      case "A": return (x + y) % 2 ? "#705038" : "#64482f";
       default:
-        if (scars) return (x + y) % 2 ? "#6e5a40" : "#5c4a34";
-        return (x + y) % 2 ? "#5a8f3c" : "#4f8236";
+        if (scars) return (x + y) % 2 ? "#606e3e" : "#566436";
+        return (x + y) % 2 ? "#56743c" : "#4e6c36";
     }
   }
 
@@ -61,8 +63,9 @@
     const pts = I.diamond(tx, ty, cam);
     const S = spr();
     const im = S && key && S.ready(key);
-    // Flat diamond fill first so gaps never flash through.
-    fillPoly(ctx, pts, fill, "rgba(20,12,6,0.28)", 0.8);
+    // Flat diamond fill first so gaps never flash through. No stroke:
+    // OSRS ground is seamless, and a per-tile outline reads as a board.
+    fillPoly(ctx, pts, fill, null, 0);
     if (im) {
       // AD terrain is a ¾ cube. Plant the cube's top face on this
       // cell's diamond — do not stamp the padded 64×64 canvas at
@@ -141,35 +144,60 @@
 
   function raiseWall(ctx, tx, ty, cam) {
     const I = iso();
+    const S = spr();
     const h = 28;
     const t = I.toScreen(tx, ty, cam);
     const r = I.toScreen(tx + 1, ty, cam);
     const b = I.toScreen(tx + 1, ty + 1, cam);
     const l = I.toScreen(tx, ty + 1, cam);
+    // OSRS walls are raised stone: two brick faces + a capping course.
+    // The wall plate is a full-diamond stone face; shear it across each
+    // side face so the brick courses run with the iso slope.
+    const face = S && S.ready("terrain/wall") ? S.ready("terrain/wall") : null;
+    const stone = "#7a7266", stoneDark = "#665f55";
+    // left (south-west) face
     fillPoly(ctx, [
       { x: l.x, y: l.y }, { x: b.x, y: b.y },
       { x: b.x, y: b.y - h }, { x: l.x, y: l.y - h },
-    ], "#4a3a28", "rgba(20,12,6,0.35)", 0.8);
+    ], stoneDark, null, 0);
+    // right (south-east) face
     fillPoly(ctx, [
       { x: r.x, y: r.y }, { x: b.x, y: b.y },
       { x: b.x, y: b.y - h }, { x: r.x, y: r.y - h },
-    ], "#3a2a1c", "rgba(20,12,6,0.35)", 0.8);
+    ], stone, null, 0);
+    if (face) {
+      // brick courses on the right face: shear the plate along its slope
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y); ctx.lineTo(b.x, b.y);
+      ctx.lineTo(b.x, b.y - h); ctx.lineTo(r.x, r.y - h);
+      ctx.closePath(); ctx.clip();
+      ctx.transform(1, 0, -0.5, 1, 0, 0);
+      ctx.drawImage(face, r.x, r.y - h, r.x - l.x, h + (b.y - t.y));
+      ctx.restore();
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(l.x, l.y); ctx.lineTo(b.x, b.y);
+      ctx.lineTo(b.x, b.y - h); ctx.lineTo(l.x, l.y - h);
+      ctx.closePath(); ctx.clip();
+      ctx.transform(1, 0, 0.5, 1, 0, 0);
+      ctx.drawImage(face, l.x - (b.x - l.x) * 0.5, l.y - h, r.x - l.x, h + (b.y - t.y));
+      ctx.restore();
+    }
+    // capping course on top of the wall
     const top = [
       { x: t.x, y: t.y - h }, { x: r.x, y: r.y - h },
       { x: b.x, y: b.y - h }, { x: l.x, y: l.y - h },
     ];
-    const S = spr();
-    if (S && S.ready("terrain/wall")) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(top[0].x, top[0].y);
-      for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(S.ready("terrain/wall"), l.x, t.y - h, r.x - l.x, h + (b.y - t.y));
-      ctx.restore();
-    }
-    fillPoly(ctx, top, S && S.ready("terrain/wall") ? null : "#6b5340", "rgba(20,12,6,0.35)", 0.8);
+    fillPoly(ctx, top, "#8a8276", null, 0);
+    // mortar lines on the cap
+    ctx.strokeStyle = "rgba(40,34,26,0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
+    ctx.closePath();
+    ctx.stroke();
   }
 
   function drawHair(ctx, hx, hy, r, style, color) {
@@ -334,11 +362,12 @@
   }
 
   function drawNameplate(ctx, text, x, y, color) {
+    // OSRS nameplates: no plate at all — yellow text with a hard black
+    // drop shadow, 1px offset.
     ctx.font = "bold 12px Georgia, serif";
     ctx.textAlign = "center";
-    const w = ctx.measureText(text).width;
-    ctx.fillStyle = "rgba(42,22,12,0.62)";
-    ctx.fillRect(x - w / 2 - 5, y - 12, w + 10, 15);
+    ctx.fillStyle = "rgba(10,8,6,0.9)";
+    ctx.fillText(text, x + 1, y + 1);
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
   }
@@ -468,7 +497,10 @@
     const cam = I.cameraFollow(focus.x, focus.y, canvas.width, canvas.height);
 
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#14100c";
+    // OSRS never shows a void: the world runs past the viewport edge.
+    // Paint the out-of-map surround as dark undergrowth so the map
+    // blends into it instead of floating on black.
+    ctx.fillStyle = "#33421f";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const spentTree = {};
@@ -711,7 +743,7 @@
           ctx.ellipse(feet.x, feet.y + 2, 12 * zoom(), 4.4 * zoom(), 0, 0, Math.PI * 2);
           ctx.stroke();
         }
-        const ink = f.kind === "you" ? "#fff4b0" : hostile ? "#f0c8a0" : "#f3e2c7";
+        const ink = f.kind === "you" ? "#ffe04d" : hostile ? "#e8544a" : "#e8e0c8";
         const plateY = feet.y - sz.h - Math.round(4 * zoom());
         drawNameplate(ctx, e.name || "?", feet.x, plateY, ink);
         if (e.maxHp > 0 && (f.kind === "you" || hostile)) {

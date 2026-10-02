@@ -134,8 +134,8 @@ near(plateSouth, dia[2].y, 1e-9, "stile plate south meets diamond south");
 // Figure foot: opaque bottom-centre maps to tile centre.
 const marta = spr.BOUNDS["npcs/marta"];
 const doll = spr.destAtFeet(c00.x, c00.y, 64, 96, 64, 96, marta);
-near(doll.x + (marta.x + marta.w / 2), c00.x, 1e-9, "Marta opaque foot x is tile centre");
-near(doll.y + (marta.y + marta.h), c00.y, 1e-9, "Marta opaque foot y is tile centre");
+near(doll.x + marta.ax, c00.x, 1e-9, "Marta anchor x is tile centre");
+near(doll.y + marta.ay, c00.y, 1e-9, "Marta anchor y is tile centre");
 
 const houseB = spr.BOUNDS["buildings/house"];
 const cottage = spr.destAtGroundDiamond(
