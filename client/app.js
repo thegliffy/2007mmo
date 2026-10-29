@@ -193,9 +193,9 @@
     for (const p of state.players) if (!state.you || p.id !== state.you.id) dot(p.x, p.y, "#d8d4c8", 3);
     for (const f of figuresNow()) dot(f.x, f.y, f.hostile ? "#cc4433" : "#e8dca8", 3);
     if (state.you) dot(state.you.x, state.you.y, "#ffe04d", 4);
-    // Compass rose, north up — inside the circle's edge (the CSS masks
-    // the square corners off, so it cannot sit at the corner itself).
-    const cx0 = w - 46, cy0 = 30;
+    // Compass rose, north up at the dial's top — where OSRS puts it.
+    // It must sit inside the radius that the CSS circular mask clips to.
+    const cx0 = w / 2, cy0 = 34;
     mmCtx.fillStyle = "rgba(10,8,6,0.85)";
     mmCtx.fillRect(cx0 - 11, cy0 - 11, 22, 22);
     mmCtx.strokeStyle = "#8a8378";
