@@ -193,20 +193,22 @@
     for (const p of state.players) if (!state.you || p.id !== state.you.id) dot(p.x, p.y, "#d8d4c8", 3);
     for (const f of figuresNow()) dot(f.x, f.y, f.hostile ? "#cc4433" : "#e8dca8", 3);
     if (state.you) dot(state.you.x, state.you.y, "#ffe04d", 4);
-    // Compass rose, north up.
+    // Compass rose, north up — inside the circle's edge (the CSS masks
+    // the square corners off, so it cannot sit at the corner itself).
+    const cx0 = w - 46, cy0 = 30;
     mmCtx.fillStyle = "rgba(10,8,6,0.85)";
-    mmCtx.fillRect(w - 26, 4, 22, 22);
+    mmCtx.fillRect(cx0 - 11, cy0 - 11, 22, 22);
     mmCtx.strokeStyle = "#8a8378";
     mmCtx.lineWidth = 2;
     mmCtx.beginPath();
-    mmCtx.moveTo(w - 15, 22);
-    mmCtx.lineTo(w - 15, 12);
+    mmCtx.moveTo(cx0, cy0 + 6);
+    mmCtx.lineTo(cx0, cy0 - 4);
     mmCtx.stroke();
     mmCtx.fillStyle = "#cc4433";
     mmCtx.beginPath();
-    mmCtx.moveTo(w - 15, 6);
-    mmCtx.lineTo(w - 18, 12);
-    mmCtx.lineTo(w - 12, 12);
+    mmCtx.moveTo(cx0, cy0 - 9);
+    mmCtx.lineTo(cx0 - 3, cy0 - 3);
+    mmCtx.lineTo(cx0 + 3, cy0 - 3);
     mmCtx.fill();
   }
 
