@@ -363,8 +363,8 @@
 
   function drawNameplate(ctx, text, x, y, color) {
     // OSRS nameplates: no plate at all — yellow text with a hard black
-    // drop shadow, 1px offset.
-    ctx.font = "bold 12px Georgia, serif";
+    // drop shadow, 1px offset. Silkscreen is the vendored bitmap face.
+    ctx.font = '14px "Silkscreen", "VT323", monospace';
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(10,8,6,0.9)";
     ctx.fillText(text, x + 1, y + 1);
@@ -476,7 +476,7 @@
       ctx.fillStyle = "#1c140c";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#f3e2c7";
-      ctx.font = "16px Georgia, serif";
+      ctx.font = '16px "VT323", monospace';
       ctx.fillText("Waiting at the stile…", 24, 40);
       return { cam: null, focus: null };
     }
@@ -508,17 +508,31 @@
       if (n.kind === "tree" && !n.ready) spentTree[n.x + "," + n.y] = true;
     }
 
+    // World bleed: the OSRS map runs past the viewport edge. Pad the loop
+    // a few tiles beyond the authored bounds and paint those cells as dark
+    // undergrowth — the hamlet sits inside land, it does not float on void.
+    const PAD = 4;
     const ground = [];
-    for (let y = 0; y < m.h; y++) {
-      const row = m.tiles[y] || "";
-      for (let x = 0; x < m.w; x++) {
+    for (let y = -PAD; y < m.h + PAD; y++) {
+      const inMapY = y >= 0 && y < m.h;
+      const row = inMapY ? (m.tiles[y] || "") : "";
+      for (let x = -PAD; x < m.w + PAD; x++) {
         const feet = I.tileFeet(x, y, cam);
         if (!I.inView(feet.x, feet.y, canvas.width, canvas.height, Math.round(110 * zoom()))) continue;
-        ground.push({ x, y, g: row[x] || "." });
+        const inMap = inMapY && x >= 0 && x < m.w;
+        ground.push({ x, y, g: inMap ? (row[x] || ".") : "", inMap });
       }
     }
     ground.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.y - b.y || a.x - b.x);
     for (const t of ground) {
+      if (!t.inMap) {
+        // Deterministic two-tone dark undergrowth so the surround dithers
+        // like real ground instead of reading as a flat backdrop.
+        const h = (((t.x * 73) + (t.y * 151)) % 7 + 7) % 7;
+        ctx.fillStyle = h >= 4 ? "#2b381a" : "#33421f";
+        drawDiamond(ctx, t.x, t.y, cam, ctx.fillStyle, "", flicker);
+        continue;
+      }
       const scars = t.x >= 27;
       const key = S ? S.tileKey(t.g === "T" ? "." : t.g, scars) : "";
       drawDiamond(ctx, t.x, t.y, cam, groundFill(t.g, t.x, t.y, scars), key, flicker);
@@ -758,7 +772,7 @@
         }
         if (e.action && e.action !== "idle" && e.action !== "walk") {
           ctx.fillStyle = "#fff4b0";
-          ctx.font = "11px Georgia, serif";
+          ctx.font = '12px "Silkscreen", monospace';
           ctx.textAlign = "center";
           ctx.fillText(actionVoice(e.action), feet.x, feet.y + 16);
         }

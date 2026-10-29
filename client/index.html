@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hollowmere — a woodland hamlet</title>
-  <link rel="stylesheet" href="styles.css?v=rs2-zoom1" />
+  <link rel="preload" href="fonts/vt323.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="preload" href="fonts/silkscreen.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="stylesheet" href="styles.css?v=osrs-ui1" />
 </head>
 <body>
   <div id="frame">
@@ -29,27 +31,38 @@
           <p id="hint">Walk the grass. The <em>oak chest</em> by the stile holds what will not fit in the pack. Gather from bramble and hazel. Crush berries at the millstone, then bake or roast at the hearth. East of the hamlet, the scars hold copper and tin — pick, kiln, anvil. South of the stile, Thornkin and a Brambleback keep the briar-woods. Click <em>near</em> a beast to fight. WASD if you like.</p>
         </div>
         <aside id="panels">
-          <section class="panel">
+          <section id="minimap-panel" class="panel">
+            <canvas id="minimap" width="300" height="300"></canvas>
+          </section>
+          <nav id="tabstrip">
+            <button type="button" class="ui-tab" data-tab="stats">Stats</button>
+            <button type="button" class="ui-tab" data-tab="skills">Skills</button>
+            <button type="button" class="ui-tab" data-tab="worn">Worn</button>
+            <button type="button" class="ui-tab on" data-tab="pack">Pack</button>
+            <button type="button" class="ui-tab" data-tab="loop">Loop</button>
+            <button type="button" class="ui-tab" data-tab="account">Account</button>
+          </nav>
+          <section class="panel tabpanel" data-tab="stats" hidden>
             <h2>Vitals</h2>
             <p class="sub">Click near a southern beast to fight. Melee trains on damage dealt, Defense on blows taken. Soft defeat wakes you at the stile.</p>
             <div id="vitals"></div>
           </section>
-          <section class="panel">
+          <section class="panel tabpanel" data-tab="skills" hidden>
             <h2>Skills</h2>
             <p class="sub">Foraging and cooking in the hamlet, Mining and Smithing in the eastern scars, Melee and Defense in the briar-woods.</p>
             <div id="skills"></div>
           </section>
-          <section class="panel">
+          <section class="panel tabpanel" data-tab="worn" hidden>
             <h2>Worn <span class="sub">click to put away</span></h2>
             <div id="equipped" class="equipslots"></div>
           </section>
-          <section class="panel">
+          <section class="panel tabpanel" data-tab="pack">
             <h2>Pack <span class="sub">click to eat or wear · click flint to take it in hand · right-click to set down</span></h2>
             <p class="purse">Purse: <span id="purse">0 coins</span></p>
             <p id="held-hint" class="heldhint hidden"></p>
             <div id="inv" class="slots"></div>
           </section>
-          <section class="panel loop">
+          <section class="panel loop tabpanel" data-tab="loop" hidden>
             <h2>The day’s loop</h2>
             <ol>
               <li>Pick <em>brambleberries</em> or <em>hazel nuts</em></li>
@@ -64,7 +77,7 @@
               <li>Walk <em>east</em> into the scars, mine <em>copper</em> and <em>tin</em>, smelt a <em>bronze bar</em> at the kiln, forge a <em>bronze knife</em> at the anvil</li>
             </ol>
           </section>
-          <section class="panel">
+          <section class="panel tabpanel" data-tab="account" hidden>
             <h2>Account <span class="sub" id="acct-name"></span></h2>
             <div id="acct-actions">
               <button id="show-pw" type="button" class="link">Change password</button>
@@ -89,16 +102,15 @@
             <p class="credit">by <strong>thegliffy</strong></p>
             <p class="credit muted">original Hollowmere · woodland life, not a studio clone</p>
           </section>
+          <section id="chatbox">
+            <div id="log"></div>
+            <form id="chatform">
+              <input id="chat" maxlength="80" autocomplete="off" placeholder="Speak to the hamlet…" />
+              <button type="submit">Say</button>
+            </form>
+          </section>
         </aside>
       </div>
-
-      <section id="chatbox">
-        <div id="log"></div>
-        <form id="chatform">
-          <input id="chat" maxlength="80" autocomplete="off" placeholder="Speak to the hamlet…" />
-          <button type="submit">Say</button>
-        </form>
-      </section>
     </div>
   </div>
 
@@ -223,10 +235,10 @@
     </div>
   </div>
 
-  <script src="pick-npc.js?v=rs2-zoom1"></script>
-  <script src="iso.js?v=rs2-zoom1"></script>
-  <script src="sprites.js?v=rs2-zoom1"></script>
-  <script src="art.js?v=rs2-zoom1"></script>
-  <script src="app.js?v=rs2-zoom1"></script>
+  <script src="pick-npc.js?v=osrs-ui1"></script>
+  <script src="iso.js?v=osrs-ui1"></script>
+  <script src="sprites.js?v=osrs-ui1"></script>
+  <script src="art.js?v=osrs-ui1"></script>
+  <script src="app.js?v=osrs-ui1"></script>
 </body>
 </html>

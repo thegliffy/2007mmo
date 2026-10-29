@@ -146,6 +146,76 @@
     state.lastTickAt = performance.now();
   }
 
+  // ---- OSRS-style sidebar ----------------------------------------------
+  // The tab strip decides which panel shows; the dial is the whole hamlet
+  // in muted tones — the world is small enough that the dial is the map.
+  const tabstrip = document.getElementById("tabstrip");
+  if (tabstrip) {
+    tabstrip.addEventListener("click", (e) => {
+      const btn = e.target.closest(".ui-tab");
+      if (!btn) return;
+      for (const t of tabstrip.querySelectorAll(".ui-tab")) t.classList.toggle("on", t === btn);
+      for (const p of document.querySelectorAll(".tabpanel")) p.hidden = p.dataset.tab !== btn.dataset.tab;
+    });
+  }
+
+  const mmCanvas = document.getElementById("minimap");
+  const mmCtx = mmCanvas && mmCanvas.getContext("2d");
+  const MM_TONE = {
+    ".": "#2c3d1c", T: "#1d2c12", P: "#6b5a3e", "~": "#2a4a5a",
+    "#": "#4c463a", H: "#6a5a3a", "*": "#6a5a3a",
+    C: "#41531f", N: "#41531f", K: "#41531f", A: "#41531f",
+  };
+  function drawMinimap() {
+    if (!mmCtx || !state.map) return;
+    const w = mmCanvas.width, h = mmCanvas.height;
+    const cell = Math.floor(Math.min(w / state.map.w, h / state.map.h));
+    const ox = Math.floor((w - cell * state.map.w) / 2);
+    const oy = Math.floor((h - cell * state.map.h) / 2);
+    mmCtx.fillStyle = "#191510";
+    mmCtx.fillRect(0, 0, w, h);
+    for (let y = 0; y < state.map.h; y++) {
+      const row = state.map.tiles[y] || "";
+      for (let x = 0; x < state.map.w; x++) {
+        const ch = row[x] || ".";
+        let tone = MM_TONE[ch] || MM_TONE["."];
+        if (x >= 27 && tone === MM_TONE["."]) tone = "#3d4a2a"; // the scars
+        mmCtx.fillStyle = tone;
+        mmCtx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
+      }
+    }
+    const dot = (x, y, color, r) => {
+      mmCtx.fillStyle = color;
+      mmCtx.beginPath();
+      mmCtx.arc(ox + (x + 0.5) * cell, oy + (y + 0.5) * cell, r || 3, 0, Math.PI * 2);
+      mmCtx.fill();
+    };
+    for (const p of state.players) if (!state.you || p.id !== state.you.id) dot(p.x, p.y, "#d8d4c8", 3);
+    for (const f of figuresNow()) dot(f.x, f.y, f.hostile ? "#cc4433" : "#e8dca8", 3);
+    if (state.you) dot(state.you.x, state.you.y, "#ffe04d", 4);
+    // Compass rose, north up.
+    mmCtx.fillStyle = "rgba(10,8,6,0.85)";
+    mmCtx.fillRect(w - 26, 4, 22, 22);
+    mmCtx.strokeStyle = "#8a8378";
+    mmCtx.lineWidth = 2;
+    mmCtx.beginPath();
+    mmCtx.moveTo(w - 15, 22);
+    mmCtx.lineTo(w - 15, 12);
+    mmCtx.stroke();
+    mmCtx.fillStyle = "#cc4433";
+    mmCtx.beginPath();
+    mmCtx.moveTo(w - 15, 6);
+    mmCtx.lineTo(w - 18, 12);
+    mmCtx.lineTo(w - 12, 12);
+    mmCtx.fill();
+  }
+
+  // Canvas text needs the vendored fonts resident before it will use them.
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('14px "Silkscreen"');
+    document.fonts.load('16px "VT323"');
+  }
+
   function onMsg(msg) {
     switch (msg.t) {
       case "welcome":
@@ -178,6 +248,7 @@
         renderSkills();
         renderVitals();
         renderInv();
+        drawMinimap();
         break;
       case "state":
         state.last = msg;
@@ -194,6 +265,7 @@
         renderVitals();
         renderInv();
         renderEquipped();
+        drawMinimap();
         if (state.shop) renderShop();
         if (state.chest) renderChest();
         $("tickinfo").textContent = "tick " + msg.n + " · " + msg.online + " online · " + (msg.ms || 0).toFixed(1) + "ms";
@@ -1007,7 +1079,7 @@
       art.drawPaperdoll(ctx, canvas.width / 2, canvas.height * 0.82, 20, looks, true);
     }
     ctx.fillStyle = "#3d2412";
-    ctx.font = "14px Georgia, serif";
+    ctx.font = '16px "Silkscreen", monospace';
     ctx.textAlign = "center";
     ctx.fillText(state.username || "Wanderer", canvas.width / 2, 26);
   }
